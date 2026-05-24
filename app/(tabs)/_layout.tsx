@@ -1,4 +1,4 @@
-import { useTheme } from '@/src/theme';
+import { useTheme } from '../../src/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 
