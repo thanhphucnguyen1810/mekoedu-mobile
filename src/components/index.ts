@@ -1,0 +1,12 @@
+// QUẢN LÝ REUSABLE COMPONENTS (UI KIT GỐC CỦA APP)
+
+export * from './AppAvatar';    // Hình đại diện (Avatar người dùng, giáo viên, icon tròn...)
+export * from './AppButton';    // Nút bấm (Đăng nhập, Đăng ký, Mua khóa học, Nộp bài...)
+export * from './AppCard';      // Thẻ/Khối nổi (Dùng để bọc thông tin 1 khóa học, 1 bài tập...)
+export * from './AppChip';      // Nhãn dán/Tag (VD: Tag "Toán học", "Lớp 12", "Đang học"...)
+export * from './AppDialog';    // Hộp thoại Popup (Hỏi "Bạn có chắc muốn nộp bài?", Báo lỗi...)
+export * from './AppDivider';   // Đường gạch ngang (Dùng để ngăn cách các phần nội dung)
+export * from './AppHeader';    // Thanh tiêu đề trên cùng (Chứa nút Back, Tên màn hình)
+export * from './AppLoader';    // Màn hình chờ Loading (Xoay xoay khi đang tải dữ liệu/gọi API)
+export * from './AppText';      // Văn bản chuẩn (Tự động ăn theo Font, Size, Màu của Theme)
+export * from './AppTextInput'; // Ô nhập liệu (Nhập Email, Mật khẩu, Khung tìm kiếm...)
