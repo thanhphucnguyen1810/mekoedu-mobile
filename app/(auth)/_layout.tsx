@@ -1,4 +1,4 @@
-import { useTheme } from '@/src/theme';
+import { useTheme } from '../../src/theme';
 import { Stack } from 'expo-router';
 
 export default function AuthLayout() {

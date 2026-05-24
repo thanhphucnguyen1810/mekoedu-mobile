@@ -1,7 +1,9 @@
-import { ThemeProvider, useTheme } from '@/src/theme';
+import { ThemeProvider, useTheme } from '../src/theme';
 import { Stack } from 'expo-router';
 import React from 'react';
 import { PaperProvider } from 'react-native-paper';
+import { Provider } from 'react-redux';
+import { store } from '../src/store'
 
 const RootNavigation = () => {
   const { c } = useTheme()
@@ -22,12 +24,14 @@ const RootNavigation = () => {
 
 export default function RootLayout() {
   return (
-    // Bọc theme
-    <ThemeProvider> 
-      {/* Bọc Provider của React Native Paper (để Dialog, Loader, UI kit hoạt động) */}
-        <PaperProvider>
-          <RootNavigation />
-        </PaperProvider>
-    </ThemeProvider>
+    <Provider store={store}>
+      {/* // Bọc theme */}
+      <ThemeProvider> 
+        {/* Bọc Provider của React Native Paper (để Dialog, Loader, UI kit hoạt động) */}
+          <PaperProvider>
+            <RootNavigation />
+          </PaperProvider>
+      </ThemeProvider>
+    </Provider>
   )
 }
