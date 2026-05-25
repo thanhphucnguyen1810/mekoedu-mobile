@@ -1,7 +1,8 @@
-import { C, Radius, Spacing } from '@/src/theme';
-import React from 'react';
-import { StyleSheet, ViewStyle } from 'react-native';
-import { Card as PaperCard } from 'react-native-paper';
+import React from "react";
+import { StyleSheet, ViewStyle } from "react-native";
+import { Card as PaperCard } from "react-native-paper";
+
+import { C, Radius, Spacing } from "@/src/theme";
 
 type AppCardProps = React.ComponentProps<typeof PaperCard> & {
   children: React.ReactNode;
@@ -21,7 +22,7 @@ export const AppCard = ({ children, style, ...props }: AppCardProps) => {
       {children}
     </PaperCard>
   );
-};
+}
 
 const styles = StyleSheet.create({
   card: {

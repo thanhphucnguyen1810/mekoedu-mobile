@@ -1,16 +1,17 @@
-import { C, Spacing, Typography } from '@/src/theme';
-import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { TextInput as PaperTextInput } from 'react-native-paper';
+import React, { useState } from "react";
+import { StyleSheet, View } from "react-native";
+import { TextInput as PaperTextInput } from "react-native-paper";
+
+import { C, Spacing, Typography } from "@/src/theme";
 
 interface AppTextInputProps {
   label: string;
   value: string;
   onChangeText: (text: string) => void;
   placeholder?: string;
-  secureTextEntry?: boolean;            // Nếu là true thì tự động kích hoạt nút con mắt ẩn/hiện pass
-  error?: boolean;                      // Trạng thái lỗi
-  leftIcon?: string;                    // Icon bên trái (VD: "email", "lock")
+  secureTextEntry?: boolean; // Nếu là true thì tự động kích hoạt nút con mắt ẩn/hiện pass
+  error?: boolean; // Trạng thái lỗi
+  leftIcon?: string; // Icon bên trái (VD: "email", "lock")
 }
 
 export const AppTextInput = ({
@@ -42,10 +43,14 @@ export const AppTextInput = ({
         theme={{
           colors: {
             primary: C.primary, // Màu của Label chạy lên trên
-            error: C.error,     // Màu viền khi báo lỗi
-          }
+            error: C.error, // Màu viền khi báo lỗi
+          },
         }}
-        left={leftIcon ? <PaperTextInput.Icon icon={leftIcon} color={C.textSub} /> : null}
+        left={
+          leftIcon ? (
+            <PaperTextInput.Icon icon={leftIcon} color={C.textSub} />
+          ) : null
+        }
         right={
           secureTextEntry ? (
             <PaperTextInput.Icon
@@ -59,7 +64,7 @@ export const AppTextInput = ({
       />
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {

@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import { Divider as PaperDivider } from 'react-native-paper';
+
 import { C, Spacing } from '@/src/theme';
 
 interface AppDividerProps {
@@ -8,15 +9,8 @@ interface AppDividerProps {
 }
 
 export const AppDivider = ({ spacing = Spacing.md }: AppDividerProps) => {
-  return (
-    <PaperDivider
-      style={[
-        styles.divider,
-        { marginVertical: spacing }
-      ]}
-    />
-  );
-};
+  return <PaperDivider style={[styles.divider, { marginVertical: spacing }]} />
+}
 
 const styles = StyleSheet.create({
   divider: {

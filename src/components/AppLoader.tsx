@@ -1,7 +1,9 @@
+import React from "react";
+import { StyleSheet, View } from "react-native";
+import { ActivityIndicator, Modal, Portal } from "react-native-paper";
+
 import { C, Spacing } from '@/src/theme';
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Modal, Portal } from 'react-native-paper';
+
 import { AppText } from './AppText';
 
 interface AppLoaderProps {
@@ -9,12 +11,19 @@ interface AppLoaderProps {
   text?: string;
 }
 
-export const AppLoader = ({ visible, text = 'Đang tải dữ liệu...' }: AppLoaderProps) => {
+export const AppLoader = ({
+  visible,
+  text = 'Đang tải dữ liệu...',
+}: AppLoaderProps) => {
   return (
     <Portal>
-      <Modal visible={visible} dismissable={false} contentContainerStyle={styles.container}>
+      <Modal
+        visible={visible}
+        dismissable={false}
+        contentContainerStyle={styles.container}
+      >
         <View style={styles.content}>
-          <ActivityIndicator animating={true} color={C.primary} size="large" />
+          <ActivityIndicator animating color={C.primary} size="large" />
           {text && (
             <AppText variant="body" style={styles.text}>
               {text}
@@ -24,7 +33,7 @@ export const AppLoader = ({ visible, text = 'Đang tải dữ liệu...' }: AppL
       </Modal>
     </Portal>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {

@@ -30,22 +30,22 @@ export const Spacing = {
   component: {
     // padding mặc định cho button
     buttonPadding: {
-      vertical: 12,       // 12px trên dưới
-      horizontal: 24,     // 24px trái phải
+      vertical: 12, // 12px trên dưới
+      horizontal: 24, // 24px trái phải
     },
-    cardPadding: 16,      // padding mặc định cho card
-    listGap: 12,          // Khoảng cách giữa các items trong list
-    iconGap: 8,           // khoảng cách giữa các icon
-    inputPadding: 12,     // padding cho input field
+    cardPadding: 16, // padding mặc định cho card
+    listGap: 12, // Khoảng cách giữa các items trong list
+    iconGap: 8, // khoảng cách giữa các icon
+    inputPadding: 12, // padding cho input field
   },
 
   /* LAYOUT SPACING  */
   layout: {
     screenHorizontal: 16, // padding ngang cho màn hình (trái/phải)
-    screenVertical: 20,   // padding dọc (trên/dưới)
-    sectionGap: 24,       // khoảng cách giữa các session trong màn hình
-    gridGap: 16,          // kc giữa các hàng trong grid
-    columnGap: 12         // kc giữa các cột trong grid
+    screenVertical: 20, // padding dọc (trên/dưới)
+    sectionGap: 24, // khoảng cách giữa các session trong màn hình
+    gridGap: 16, // kc giữa các hàng trong grid
+    columnGap: 12, // kc giữa các cột trong grid
   },
 
   /* BORDER RADIUS */
@@ -59,7 +59,7 @@ export const Spacing = {
   },
 
   /* BORDER WIDTH */
-   borderWidth: {
+  borderWidth: {
     thin: 0.5,
     normal: 1,
     thick: 2,
@@ -83,18 +83,15 @@ export type SpacingType = typeof Spacing;
 export type SpacingLevel = keyof typeof Spacing;
 export type BorderRadiusKey = keyof typeof Spacing.borderRadius;
 
-
-
-
 // ==================== HELPER FUNCTIONS ====================
 
 /**
  * Tạo khoảng cách margin theo hướng
- * 
+ *
  * @param spacing - Giá trị spacing từ hệ thống
  * @param direction - Hướng áp dụng (top, right, bottom, left, horizontal, vertical, all)
  * @returns Style object với margin tương ứng
- * 
+ *
  * @example
  * const styles = StyleSheet.create({
  *   box: {
@@ -105,7 +102,14 @@ export type BorderRadiusKey = keyof typeof Spacing.borderRadius;
  */
 export const getMargin = (
   spacing: number,
-  direction: 'top' | 'right' | 'bottom' | 'left' | 'horizontal' | 'vertical' | 'all' = 'all'
+  direction:
+    | 'top'
+    | 'right'
+    | 'bottom'
+    | 'left'
+    | 'horizontal'
+    | 'vertical'
+    | 'all' = 'all',
 ) => {
   switch (direction) {
     case 'top':
@@ -127,11 +131,11 @@ export const getMargin = (
 
 /**
  * Tạo khoảng cách padding theo hướng
- * 
+ *
  * @param spacing - Giá trị spacing từ hệ thống
  * @param direction - Hướng áp dụng (top, right, bottom, left, horizontal, vertical, all)
  * @returns Style object với padding tương ứng
- * 
+ *
  * @example
  * const styles = StyleSheet.create({
  *   container: {
@@ -142,7 +146,14 @@ export const getMargin = (
  */
 export const getPadding = (
   spacing: number,
-  direction: 'top' | 'right' | 'bottom' | 'left' | 'horizontal' | 'vertical' | 'all' = 'all'
+  direction:
+    | 'top'
+    | 'right'
+    | 'bottom'
+    | 'left'
+    | 'horizontal'
+    | 'vertical'
+    | 'all' = 'all',
 ) => {
   switch (direction) {
     case 'top':
@@ -164,10 +175,10 @@ export const getPadding = (
 
 /**
  * Tạo khoảng cách gap (dùng cho Flexbox gap property)
- * 
+ *
  * @param spacing - Giá trị spacing từ hệ thống
  * @returns Gap value
- * 
+ *
  * @example
  * <View style={{ gap: getGap(Spacing[4]) }}> // gap: 16
  */
@@ -184,18 +195,18 @@ export const SpacingUtils = {
     paddingHorizontal: Spacing.layout.screenHorizontal,
     paddingVertical: Spacing.layout.screenVertical,
   },
-  
+
   /** Gap giữa các item trong list */
   listItem: {
     marginBottom: Spacing.component.listGap,
   },
-  
+
   /** Style cho card chuẩn */
   card: {
     padding: Spacing.component.cardPadding,
     borderRadius: Spacing.borderRadius.lg,
   },
-  
+
   /** Style cho button chuẩn */
   button: {
     paddingVertical: Spacing.component.buttonPadding.vertical,
@@ -203,6 +214,5 @@ export const SpacingUtils = {
     borderRadius: Spacing.borderRadius.md,
   },
 } as const;
-
 
 export const Radius = Spacing.borderRadius;
