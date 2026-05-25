@@ -1,5 +1,5 @@
 export const Colors = {
-  primary:  {
+  primary: {
     25: '#FFF5F5',
     50: '#FEF2F2',
     100: '#FEE2E2',
@@ -7,7 +7,7 @@ export const Colors = {
     300: '#FCA5A5',
     400: '#F87171',
     450: '#F55B5B',
-    500: '#EF4444',     // main
+    500: '#EF4444', // main
     550: '#E53232',
     600: '#DC2626',
     650: '#D11F1F',
@@ -69,7 +69,7 @@ export const Colors = {
     1000: '#000000',
   },
 
-   // Background variants
+  // Background variants
   background: {
     primary: '#FFFFFF',
     secondary: '#F9FAFB',

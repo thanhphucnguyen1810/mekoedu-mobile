@@ -1,9 +1,11 @@
-import { C, Spacing } from '@/src/theme';
-import React from 'react';
-import { Dialog, Portal } from 'react-native-paper';
-import { AppButton } from './AppButton';
-import { AppText } from './AppText';
+import React from "react";
 import { StyleSheet } from 'react-native';
+import { Dialog, Portal } from 'react-native-paper';
+
+import { C, Spacing } from '@/src/theme';
+
+import { AppButton } from "./AppButton";
+import { AppText } from "./AppText";
 
 interface AppDialogProps {
   visible: boolean;
@@ -24,11 +26,15 @@ export const AppDialog = ({
   confirmLabel = 'Xác nhận',
   onConfirm,
   cancelLabel = 'Hủy',
-  type = 'info'
+  type = 'info',
 }: AppDialogProps) => {
   return (
     <Portal>
-      <Dialog visible={visible} onDismiss={onDismiss} style={{ backgroundColor: C.bg }}>
+      <Dialog
+        visible={visible}
+        onDismiss={onDismiss}
+        style={{ backgroundColor: C.bg }}
+      >
         <Dialog.Title>
           <AppText variant="h4" color={type === 'error' ? C.error : C.primary}>
             {title}
@@ -40,13 +46,19 @@ export const AppDialog = ({
         <Dialog.Actions style={styles.actions}>
           <AppButton title={cancelLabel} mode="text" onPress={onDismiss} />
           {onConfirm && (
-            <AppButton title={confirmLabel} onPress={() => { onConfirm(); onDismiss(); }} />
+            <AppButton
+              title={confirmLabel}
+              onPress={() => {
+                onConfirm()
+                onDismiss()
+              }}
+            />
           )}
         </Dialog.Actions>
       </Dialog>
     </Portal>
   );
-};
+}
 
 const styles = StyleSheet.create({
   actions: {

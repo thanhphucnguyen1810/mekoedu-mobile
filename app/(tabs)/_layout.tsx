@@ -1,6 +1,7 @@
-import { useTheme } from '../../src/theme';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
+
+import { useTheme } from "../../src/theme";
 
 export default function TabLayout() {
   const { c, typography } = useTheme();
@@ -27,18 +28,26 @@ export default function TabLayout() {
         options={{
           title: 'Trang chủ',
           tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="home-variant-outline" size={24} color={color} />
+            <MaterialCommunityIcons
+              name="home-variant-outline"
+              size={24}
+              color={color}
+            />
           ),
         }}
       />
-      
+
       {/* Tab 2: Khóa học */}
       <Tabs.Screen
         name="courses"
         options={{
           title: 'Khóa học',
           tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="book-open-variant" size={24} color={color} />
+            <MaterialCommunityIcons
+              name="book-open-variant"
+              size={24}
+              color={color}
+            />
           ),
         }}
       />
@@ -49,7 +58,11 @@ export default function TabLayout() {
         options={{
           title: 'Thi',
           tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="file-document-edit-outline" size={24} color={color} />
+            <MaterialCommunityIcons
+              name="file-document-edit-outline"
+              size={24}
+              color={color}
+            />
           ),
         }}
       />
@@ -60,7 +73,11 @@ export default function TabLayout() {
         options={{
           title: 'Tài khoản',
           tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="account-circle-outline" size={24} color={color} />
+            <MaterialCommunityIcons
+              name="account-circle-outline"
+              size={24}
+              color={color}
+            />
           ),
         }}
       />

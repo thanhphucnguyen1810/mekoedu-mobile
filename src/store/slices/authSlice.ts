@@ -21,7 +21,10 @@ const authSlice = createSlice({
     loginStart: (state) => {
       state.isLoading = true;
     },
-    loginSuccess: (state, action: PayloadAction<{ user: any; token: string }>) => {
+    loginSuccess: (
+      state,
+      action: PayloadAction<{ user: any; token: string }>,
+    ) => {
       state.isLoading = false;
       state.user = action.payload.user;
       state.token = action.payload.token;

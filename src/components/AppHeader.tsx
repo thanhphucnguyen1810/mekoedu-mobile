@@ -1,7 +1,8 @@
-import { C, Typography } from '@/src/theme';
-import { useNavigation } from '@react-navigation/native';
-import React from 'react';
-import { Appbar } from 'react-native-paper';
+import { useNavigation } from "@react-navigation/native";
+import React from "react";
+import { Appbar } from "react-native-paper";
+
+import { C, Typography } from "@/src/theme";
 
 interface AppHeaderProps {
   title: string;
@@ -23,7 +24,7 @@ export const AppHeader = ({
       {showBack && (
         <Appbar.BackAction onPress={() => navigation.goBack()} color={C.text} />
       )}
-      
+
       <Appbar.Content
         title={title}
         titleStyle={{
@@ -31,10 +32,10 @@ export const AppHeader = ({
           color: C.text,
         }}
       />
-      
+
       {rightIcon && (
         <Appbar.Action icon={rightIcon} onPress={onRightPress} color={C.text} />
       )}
     </Appbar.Header>
   );
-};
+}

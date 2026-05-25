@@ -1,12 +1,13 @@
-import { C } from '@/src/theme';
-import React from 'react';
-import { Avatar as PaperAvatar } from 'react-native-paper';
+import React from "react";
+import { Avatar as PaperAvatar } from "react-native-paper";
+
+import { C } from "@/src/theme";
 
 interface AppAvatarProps {
   type?: 'image' | 'text' | 'icon';
-  source?: any;     // Link ảnh hoặc require('...')
-  label?: string;   // Tên viết tắt, VD: "TN"
-  icon?: string;    // Tên icon material
+  source?: any; // Link ảnh hoặc require('...')
+  label?: string; // Tên viết tắt, VD: "TN"
+  icon?: string; // Tên icon material
   size?: number;
   backgroundColor?: string;
   color?: string;
@@ -19,7 +20,7 @@ export const AppAvatar = ({
   icon = 'account',
   size = 48,
   backgroundColor = C.primaryLight,
-  color = C.primary,                
+  color = C.primary,
 }: AppAvatarProps) => {
   if (type === 'image' && source) {
     return <PaperAvatar.Image size={size} source={source} />;
@@ -44,4 +45,4 @@ export const AppAvatar = ({
       color={color}
     />
   );
-};
+}

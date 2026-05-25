@@ -1,14 +1,20 @@
-import { C, Radius, Spacing, Typography } from '@/src/theme';
-import React from 'react';
-import { StyleSheet } from 'react-native';
-import { Chip } from 'react-native-paper';
+import React from "react";
+import { StyleSheet } from "react-native";
+import { Chip } from "react-native-paper";
+
+import { C, Radius, Spacing, Typography } from "@/src/theme";
 
 type AppChipProps = React.ComponentProps<typeof Chip> & {
   label: string;
   variant?: 'flat' | 'outlined';
 };
 
-export const AppChip = ({ label, variant = 'flat', style, ...props }: AppChipProps) => {
+export const AppChip = ({
+  label,
+  variant = 'flat',
+  style,
+  ...props
+}: AppChipProps) => {
   return (
     <Chip
       mode={variant}
@@ -21,7 +27,7 @@ export const AppChip = ({ label, variant = 'flat', style, ...props }: AppChipPro
       {label}
     </Chip>
   );
-};
+}
 
 const styles = StyleSheet.create({
   chip: {
