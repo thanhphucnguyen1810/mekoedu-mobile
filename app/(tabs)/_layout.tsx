@@ -29,7 +29,7 @@ export default function TabLayout() {
           title: 'Trang chủ',
           tabBarIcon: ({ color }) => (
             <MaterialCommunityIcons
-              name="home-variant-outline"
+              name="view-dashboard-outline"
               size={24}
               color={color}
             />
