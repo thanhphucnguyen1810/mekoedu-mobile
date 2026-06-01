@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 
 // URL Liferay (Lưu ý: Thay IP 10.0.2.2 cho Android)
-const BASE_URL = 'http://10.0.2.2:8080/o/headless-delivery/v1.0';
+const BASE_URL = '';
 
 export const api = axios.create({
   baseURL: BASE_URL,

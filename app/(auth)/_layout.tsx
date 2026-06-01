@@ -8,8 +8,8 @@ export default function AuthLayout() {
   return (
     <Stack
       screenOptions={{
-        headerShown: false, // Ẩn header mặc định để dùng AppHeader tự code
-        contentStyle: { backgroundColor: c.bg }, // Set màu nền trắng
+        headerShown: false,
+        contentStyle: { backgroundColor: c.bg },
       }}
     >
       <Stack.Screen name="login" />

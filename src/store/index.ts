@@ -1,13 +1,24 @@
-import { configureStore } from '@reduxjs/toolkit';
+/**
+ * src/store/index.ts
+ * Redux store – tích hợp liferayAuth, cart, exam
+ */
 
-import authReducer from './slices/authSlice';
+import { configureStore } from "@reduxjs/toolkit";
+import cartReducer from "./slices/cartSlice";
+import liferayAuthReducer from "./slices/liferayAuthSlice";
+import examReducer from "./slices/examSlice"; // bật sau khi tách examSlice
 
 export const store = configureStore({
   reducer: {
-    auth: authReducer,
+    liferayAuth: liferayAuthReducer,
+    cart: cartReducer,
+    exam: examReducer,
   },
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware({
+      serializableCheck: false, // cần cho AsyncStorage thunk
+    }),
 });
 
-// Kiểu dữ liệu để dùng hook selector chuẩn chỉnh
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;

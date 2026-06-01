@@ -9,9 +9,9 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: false, // Ẩn header trên cùng
-        tabBarActiveTintColor: c.primary, // Khi bấm vào tab thì icon đổi sang Đỏ
-        tabBarInactiveTintColor: c.textSub, // Tab không chọn thì màu xám
+        headerShown: false,
+        tabBarActiveTintColor: c.primary,
+        tabBarInactiveTintColor: c.textSub,
         tabBarStyle: {
           backgroundColor: c.bg,
           borderTopWidth: 1,
@@ -24,12 +24,12 @@ export default function TabLayout() {
     >
       {/* Tab 1: Trang chủ */}
       <Tabs.Screen
-        name="index"
+        name="home"
         options={{
           title: 'Trang chủ',
           tabBarIcon: ({ color }) => (
             <MaterialCommunityIcons
-              name="view-dashboard-outline"
+              name="home-outline"
               size={24}
               color={color}
             />

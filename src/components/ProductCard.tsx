@@ -1,27 +1,45 @@
-import { C, Colors, Radius, Spacing } from '@/src/theme';
-import { MaterialIcons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
+// src/components/ProductCard/index.tsx
+import { useTheme } from '@/src/theme';
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface ProductCardProps {
+  id: string | number;
+  title: string;
+  price: number | { price: number };
+  duration?: string;
+  lessonCount?: number;
+  rating?: number;
+  reviewCount?: number;
+  imageUrl: string;
   brandName: string;
   brandLogoChar: string;
-  title: string;
-  price: number;
-  imageUrl: string;
-  duration: string;
-  lessonCount: number;
-  rating: number;
-  reviewCount: number;
-  onPress?: () => void;
+  onPress: () => void;
   onAddToCartPress: () => void;
   onBuyCoursePress: () => void;
 }
 
-export const ProductCard = ({
-  brandName,
-  brandLogoChar,
+  
+function formatPrice(priceValue: number | undefined | null | { price?: number }) {
+  // Nếu là object, lấy price.price
+  let actualPrice: number | undefined | null;
+  
+  if (typeof priceValue === 'object' && priceValue !== null) {
+    actualPrice = priceValue.price;
+  } else {
+    actualPrice = priceValue as number | undefined | null;
+  }
+  
+  // Kiểm tra giá trị hợp lệ
+  if (!actualPrice || actualPrice === 0 || isNaN(actualPrice)) {
+    return "Miễn phí";
+  }
+  
+  return actualPrice.toLocaleString("vi-VN") + "đ";
+}
+
+
+export const ProductCard: React.FC<ProductCardProps> = ({
   title,
   price,
   duration,
@@ -29,89 +47,72 @@ export const ProductCard = ({
   rating,
   reviewCount,
   imageUrl,
+  brandName,
+  brandLogoChar,
   onPress,
   onAddToCartPress,
   onBuyCoursePress,
-}: ProductCardProps) => {
-  const renderStarRating = (rating: number) => {
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 !== 0;
-    const totalStars = 5;
-    let stars = [];
-    for (let i = 0; i < fullStars; i++) {
-      stars.push(<MaterialIcons key={`full-${i}`} name="star" size={14} color={C.warning} />);
-    }
-    if (hasHalfStar) {
-      stars.push(<MaterialIcons key="half" name="star-half" size={14} color={C.warning} />);
-    }
-    for (let i = fullStars + (hasHalfStar ? 1 : 0); i < totalStars; i++) {
-      stars.push(<MaterialIcons key={`empty-${i}`} name="star-outline" size={14} color={C.warning} />);
-    }
-    return <View style={styles.starRating}>{stars}</View>;
-  };
-
+}) => {
+  const { c, spacing, radius } = useTheme();
+  console.log(imageUrl);
+  
   return (
-    <TouchableOpacity
-      style={styles.card}
+    <TouchableOpacity 
+      style={[styles.card, { 
+        backgroundColor: c.bg,
+        borderRadius: radius.lg,
+        borderColor: c.border 
+      }]} 
       onPress={onPress}
       activeOpacity={0.9}
-      accessibilityRole="link"
-      accessibilityLabel={`${title} khóa học bởi ${brandName}, Giá ${price.toLocaleString('vi-VN')} đ.`}
     >
-      <Image
-        source={{ uri: imageUrl }}
-        style={styles.image}
-        contentFit="cover"
-        transition={200}
+      <Image 
+        source={{ uri: imageUrl }} 
+        style={[styles.image, { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg }]} 
       />
-
-      <View style={styles.info}>
-        {/* Brand badge */}
-        <View style={styles.badgeContainer}>
-          <View style={styles.badgeLogo}>
-            <Text style={styles.badgeLogoText}>{brandLogoChar}</Text>
+      
+      <View style={styles.content}>
+        <View style={styles.brandRow}>
+          <View style={[styles.brandLogo, { backgroundColor: c.primary + '20' }]}>
+            <Text style={[styles.brandLogoText, { color: c.primary }]}>{brandLogoChar || 'M'}</Text>
           </View>
-          <Text style={styles.brandNameText}>{brandName}</Text>
-        </View>
-
-        {/* Title */}
-        <Text style={styles.titleText} numberOfLines={2}>
-          {title}
-        </Text>
-
-        {/* Price */}
-        <Text style={styles.priceText}>
-          {price.toLocaleString('vi-VN')} đ
-        </Text>
-
-        {/* Duration & Lessons */}
-        <View style={styles.durationRow}>
-          <View style={styles.infoBlock}>
-            <MaterialIcons name="access-time" size={14} color={C.textSub} style={{ marginRight: 2 }} />
-            <Text style={styles.captionText}>{duration}</Text>
-          </View>
-          <View style={styles.infoBlock}>
-            <MaterialIcons name="book" size={14} color={C.textSub} style={{ marginRight: 2 }} />
-            <Text style={styles.captionText}>{lessonCount} bài</Text>
-          </View>
-        </View>
-
-        {/* Rating & Reviews */}
-        <View style={styles.ratingRow}>
-          {renderStarRating(rating)}
-          <Text style={styles.reviewText} numberOfLines={1}>
-            ({reviewCount})
+          <Text style={[styles.brandName, { color: c.textSub }]} numberOfLines={1}>
+            {brandName || 'MekoEdu'}
           </Text>
         </View>
-
-        {/* Actions */}
-        <View style={styles.actionRow}>
-          <TouchableOpacity onPress={onAddToCartPress} style={styles.addToCartButton}>
-            <MaterialIcons name="add-shopping-cart" size={20} color={C.textSub} />
+        
+        <Text style={[styles.title, { color: c.text }]} numberOfLines={2}>
+          {title}
+        </Text>
+        
+        <View style={styles.statsRow}>
+          <Text style={[styles.statsText, { color: c.textSub }]}>⏱ {duration || 'Chưa cập nhật'}</Text>
+          <Text style={[styles.statsText, { color: c.textSub }]}>📚 {lessonCount ?? 0} bài</Text>
+        </View>
+        
+        <View style={styles.ratingRow}>
+          <Text style={styles.ratingStar}>⭐</Text>
+          <Text style={[styles.ratingText, { color: c.text }]}>
+            {(rating ?? 0).toFixed(1)}
+          </Text>
+          <Text style={[styles.reviewText, { color: c.textSub }]}>({reviewCount ?? 0})</Text>
+        </View>
+        
+        <Text style={[styles.price, { color: c.primary }]}>{formatPrice(price)}</Text>
+        
+        <View style={styles.buttonRow}>
+          <TouchableOpacity 
+            style={[styles.cartButton, { borderColor: c.border }]} 
+            onPress={onAddToCartPress}
+          >
+            <Text style={[styles.cartButtonText, { color: c.primary }]}>🛒</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity onPress={onBuyCoursePress} style={styles.buyButton}>
-            <Text style={styles.buyButtonText}>MUA NGAY</Text>
+          
+          <TouchableOpacity 
+            style={[styles.buyButton, { backgroundColor: c.primary }]} 
+            onPress={onBuyCoursePress}
+          >
+            <Text style={[styles.buyButtonText, { color: '#FFF' }]}>Mua ngay</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -121,114 +122,96 @@ export const ProductCard = ({
 
 const styles = StyleSheet.create({
   card: {
-    flex: 1,                  // Cho phép chia đều không gian trong row
-    minWidth: 150,            // Đảm bảo trên màn nhỏ vẫn hiển thị được 2 cột
-    backgroundColor: C.bg,
-    borderRadius: Radius.lg,
+    borderWidth: 1,
     overflow: 'hidden',
-    shadowColor: C.text,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
   },
   image: {
     width: '100%',
     height: 120,
-    backgroundColor: C.bgSoft,
+    resizeMode: 'cover',
   },
-  info: {
-    padding: Spacing.sm,
+  content: {
+    padding: 12,
   },
-  starRating: {
+  brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 8,
   },
-  badgeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: '#C4E9DA',
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-    borderRadius: Radius.full,
-    marginBottom: Spacing.xs,
-  },
-  badgeLogo: {
-    width: 16,
-    height: 16,
-    borderRadius: Radius.full,
-    backgroundColor: C.bgSoft,
-    alignItems: 'center',
+  brandLogo: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     justifyContent: 'center',
-    marginRight: 4,
+    alignItems: 'center',
+    marginRight: 6,
   },
-  badgeLogoText: {
-    color: '#1A6B53',
-    fontWeight: '700',
-    fontSize: 8,
-  },
-  brandNameText: {
-    color: C.text,
-    fontWeight: '500',
+  brandLogoText: {
     fontSize: 10,
+    fontWeight: 'bold',
   },
-  titleText: {
-    color: C.text,
-    fontSize: 13,
-    marginBottom: 4,
+  brandName: {
+    fontSize: 11,
+    flex: 1,
   },
-  priceText: {
-    color: C.error,
-    fontSize: 15,
+  title: {
+    fontSize: 14,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 8,
+    lineHeight: 18,
   },
-  durationRow: {
+  statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
+    marginBottom: 8,
   },
-  infoBlock: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  captionText: {
-    color: C.textSub,
+  statsText: {
     fontSize: 11,
   },
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
+    marginBottom: 8,
+  },
+  ratingStar: {
+    fontSize: 12,
+    marginRight: 4,
+  },
+  ratingText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginRight: 4,
   },
   reviewText: {
-    color: C.textSub,
-    marginLeft: 4,
-    fontSize: 10,
+    fontSize: 11,
   },
-  actionRow: {
+  price: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  buttonRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 'auto',
+    gap: 8,
   },
-  addToCartButton: {
-    padding: 4,
+  cartButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  cartButtonText: {
+    fontSize: 16,
   },
   buyButton: {
-    backgroundColor: '#F9A8A8',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: Radius.md,
+    flex: 2,
+    borderRadius: 8,
+    paddingVertical: 8,
     alignItems: 'center',
-    justifyContent: 'center',
   },
   buyButtonText: {
-    color: Colors?.primary[900] || '#B91C1C',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
