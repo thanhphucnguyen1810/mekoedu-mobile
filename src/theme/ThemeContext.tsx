@@ -73,11 +73,13 @@ export const ThemeProvider: React.FC<{
       },
     } as typeof Colors;
 
-    // 3. Cập nhật Flat Alias (C) chạy động theo cấu hình
     const dynamicC = {
       ...C,
       primary: config.primaryColor || C.primary,
       bg: isDark ? Colors.neutral[950] : Colors.background.primary,
+      
+      bgSoft: isDark ? Colors.neutral[900] : Colors.background.secondary, 
+
       text: isDark ? Colors.neutral[50] : Colors.neutral[900],
       textSub: isDark ? Colors.neutral[400] : Colors.neutral[500],
       border: isDark ? Colors.neutral[800] : Colors.neutral[200],

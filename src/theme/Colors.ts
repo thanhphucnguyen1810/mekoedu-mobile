@@ -46,6 +46,20 @@ export const Colors = {
     900: '#78350F',
   },
 
+  brand: {
+    25: '#F4FAF7',
+    50: '#E8F5F1',
+    100: '#C8E6D9',
+    200: '#A5D6C0',
+    300: '#81C7A8',
+    400: '#66BB9A',
+    500: '#1D9E75',
+    600: '#0F6E56',
+    700: '#0B5E47',
+    800: '#094D3A',
+    900: '#073B2C',
+  },
+
   // Semantic color
   success: '#10B981',
   error: '#EF4444',
@@ -81,7 +95,6 @@ export const Colors = {
 export type ColorScheme = typeof Colors;
 
 // ==================== FLAT ALIAS (C) ====================
-// Alias phẳng giúp gọi màu nhanh gọn trong StyleSheet (VD: C.bg, C.text)
 export const C = {
   bg: Colors.background.primary,
   bgSoft: Colors.background.secondary,
@@ -95,3 +108,4 @@ export const C = {
   warning: Colors.warning,
   info: Colors.info,
 } as const;
+

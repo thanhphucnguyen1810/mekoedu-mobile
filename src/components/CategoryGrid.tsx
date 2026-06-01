@@ -1,7 +1,7 @@
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React from 'react';
 import {
   FlatList,
+  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -11,27 +11,24 @@ import {
 
 import { useTheme } from '@/src/theme';
 
-type MaterialIconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
-
 export interface Category {
   id: string;
   name: string;
-  iconName: MaterialIconName;
+  imageUrl: string;
 }
 
 interface CategoryGridProps {
-  data: readonly Category[];
+  categories: readonly Category[];
   onCategoryPress?: (id: string) => void;
 }
 
 // Breakpoints cho responsive
 const BREAKPOINTS = {
-  phone: 480,    // điện thoại thường
-  tablet: 768,   // tablet nhỏ
-  tabletLg: 1024, // tablet lớn / iPad Pro
+  phone: 480,
+  tablet: 768,
+  tabletLg: 1024,
 };
 
-// Tính số item hiển thị dựa theo chiều rộng màn hình
 function getVisibleItemCount(width: number): number {
   if (width >= BREAKPOINTS.tabletLg) return 8.5;
   if (width >= BREAKPOINTS.tablet) return 6.5;
@@ -39,7 +36,6 @@ function getVisibleItemCount(width: number): number {
   return 5.2;
 }
 
-// Kích thước icon box tương ứng
 function getIconBoxSize(width: number): number {
   if (width >= BREAKPOINTS.tabletLg) return 64;
   if (width >= BREAKPOINTS.tablet) return 58;
@@ -47,13 +43,12 @@ function getIconBoxSize(width: number): number {
   return 52;
 }
 
-// Font size label tương ứng
 function getLabelFontSize(width: number): number {
   if (width >= BREAKPOINTS.tablet) return 12;
   return 11;
 }
 
-export const CategoryGrid = ({ data, onCategoryPress }: CategoryGridProps) => {
+export const CategoryGrid = ({ categories, onCategoryPress }: CategoryGridProps) => {
   const { width: windowWidth } = useWindowDimensions();
   
   const { c, colors, radius, spacing, typography } = useTheme();
@@ -65,9 +60,49 @@ export const CategoryGrid = ({ data, onCategoryPress }: CategoryGridProps) => {
   const availableWidth = windowWidth - spacing.layout.screenHorizontal * 2;
   const itemWidth = availableWidth / visibleCount;
 
+  const CategoryImage = ({ url, size, borderRadius }: { url: string; size: number; borderRadius: number }) => {
+    const [hasError, setHasError] = React.useState(false);
+
+    if (!url || hasError) {
+      return (
+        <View
+          style={[
+            styles.fallbackImage,
+            {
+              width: size,
+              height: size,
+              borderRadius,
+              backgroundColor: colors.neutral[200],
+            },
+          ]}
+        >
+          <Text style={{ color: colors.neutral[500], fontSize: size * 0.3 }}>
+            🖼️
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <Image
+        source={{ uri: url }}
+        style={[
+          styles.image,
+          {
+            width: size,
+            height: size,
+            borderRadius,
+          }
+        ]}
+        resizeMode="cover"
+        onError={() => setHasError(true)}
+      />
+    );
+  };
+
   return (
     <FlatList
-      data={data}
+      data={categories}
       keyExtractor={(item) => item.id}
       horizontal
       showsHorizontalScrollIndicator={false}
@@ -78,7 +113,7 @@ export const CategoryGrid = ({ data, onCategoryPress }: CategoryGridProps) => {
       decelerationRate="fast"
       renderItem={({ item }) => (
         <TouchableOpacity
-          style={[styles.item, { width: itemWidth, gap: spacing.sm - 2 }]} // gap: 6px
+          style={[styles.item, { width: itemWidth, gap: spacing.sm - 2 }]}
           onPress={() => onCategoryPress?.(item.id)}
           activeOpacity={0.7}
           accessibilityRole="button"
@@ -86,20 +121,20 @@ export const CategoryGrid = ({ data, onCategoryPress }: CategoryGridProps) => {
         >
           <View
             style={[
-              styles.iconBox,
+              styles.imageBox,
               {
                 width: iconBoxSize,
                 height: iconBoxSize,
                 borderRadius: radius.md,
-                backgroundColor: colors.primary[100], 
+                backgroundColor: colors.primary[100],
                 shadowColor: colors.neutral[1000],
               },
             ]}
           >
-            <MaterialCommunityIcons
-              name={item.iconName as any}
-              size={Math.round(iconBoxSize * 0.44)}
-              color={c.text}
+            <CategoryImage 
+              url={item.imageUrl} 
+              size={iconBoxSize} 
+              borderRadius={radius.md}
             />
           </View>
 
@@ -124,18 +159,25 @@ export const CategoryGrid = ({ data, onCategoryPress }: CategoryGridProps) => {
   );
 };
 
-
 const styles = StyleSheet.create({
   item: {
     alignItems: 'center',
   },
-  iconBox: {
+  imageBox: {
     alignItems: 'center',
     justifyContent: 'center',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
     shadowRadius: 3,
     elevation: 1,
+    overflow: 'hidden',
+  },
+  image: {
+    // Style sẽ được override inline
+  },
+  fallbackImage: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   label: {
     textAlign: 'center',

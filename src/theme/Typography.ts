@@ -7,7 +7,6 @@ export const Typography = {
       android: 'Roboto',
       default: 'System',
     }),
-    // Fix Android Roboto-Medium issue
     medium: Platform.select({
       ios: 'System',
       android: 'Roboto',
@@ -130,7 +129,7 @@ export const Typography = {
       letterSpacing: 1,
     } as TextStyle,
   },
-} as const;
+};
 
 export type TypographyType = typeof Typography;
 export type TextVariant = keyof typeof Typography.variants;
