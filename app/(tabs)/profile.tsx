@@ -1,10 +1,16 @@
-import React from 'react';
-import { Text, View, StyleSheet } from "react-native";
-import { useTheme } from '@/src/theme';
-import { AppText, AppHeader } from '@/src/components/common';
+import { AppHeader, AppText } from "@/src/components/common";
+import { clearAuthTokens } from "@/src/services/tokenService";
+import { useTheme } from "@/src/theme";
+import { router } from "expo-router";
+import { Button, StyleSheet, View } from "react-native";
 
 export default function ProfileScreen() {
-  const { c, spacing, typography } = useTheme()
+  const { c, spacing, typography } = useTheme();
+
+  const logout = async () => {
+    clearAuthTokens();
+    router.replace("/welcome");
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: c.bg }]}>
@@ -13,6 +19,7 @@ export default function ProfileScreen() {
         <AppText style={{ color: c.text, ...typography.variants.h3 }}>
           Chào mừng bạn quay trở lại!
         </AppText>
+        <Button title="Đăng xuất" onPress={logout}></Button>
       </View>
     </View>
   );
@@ -21,5 +28,5 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  }
-})
+  },
+});

@@ -1,14 +1,39 @@
 // app/welcome.tsx
 import { useTheme } from "@/src/theme";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import React from "react";
-import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useEffect } from "react";
+import {
+  Dimensions,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export default function WelcomeScreen() {
   const { c, radius } = useTheme();
   const router = useRouter();
+
+  useEffect(() => {
+    const checkLogin = async () => {
+      try {
+        const accessToken = await AsyncStorage.getItem("access_token");
+        const refreshToken = await AsyncStorage.getItem("refresh_token");
+        console.log("accessToken", accessToken);
+        console.log("refreshToken", refreshToken);
+        if (accessToken) {
+          router.replace("/(tabs)/home");
+        }
+      } catch (error) {
+        console.log("Lỗi kiểm tra token:", error);
+      }
+    };
+
+    checkLogin();
+  }, []);
 
   return (
     <View style={[styles.container, { backgroundColor: c.bg }]}>
@@ -27,7 +52,10 @@ export default function WelcomeScreen() {
       <View style={styles.buttonContainer}>
         {/* Nút Đăng nhập */}
         <TouchableOpacity
-          style={[styles.button, { backgroundColor: c.primary, borderRadius: radius.md }]}
+          style={[
+            styles.button,
+            { backgroundColor: c.primary, borderRadius: radius.md },
+          ]}
           onPress={() => router.push("/(auth)/login")}
         >
           <Text style={styles.loginText}>Đăng nhập</Text>
@@ -35,10 +63,16 @@ export default function WelcomeScreen() {
 
         {/* Nút Đăng ký */}
         <TouchableOpacity
-          style={[styles.button, styles.registerBtn, { borderColor: c.primary, borderRadius: radius.md }]}
+          style={[
+            styles.button,
+            styles.registerBtn,
+            { borderColor: c.primary, borderRadius: radius.md },
+          ]}
           onPress={() => router.push("/(auth)/register")}
         >
-          <Text style={[styles.registerText, { color: c.primary }]}>Đăng ký</Text>
+          <Text style={[styles.registerText, { color: c.primary }]}>
+            Đăng ký
+          </Text>
         </TouchableOpacity>
       </View>
     </View>

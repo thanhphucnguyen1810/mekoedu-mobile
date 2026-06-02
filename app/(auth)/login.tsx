@@ -4,11 +4,11 @@
  * thông qua loginUser service.
  */
 
-import { loginUser } from '@/src/services/liferayService';
+import { loginUser } from "@/src/services/liferayService";
 import type { AppDispatch, RootState } from "@/src/store";
 import { useTheme } from "@/src/theme";
 import { Link, router } from "expo-router";
-import React, { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -31,6 +31,18 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  // useEffect(() => {
+  //   const checkLogin = async () => {
+  //     const token = await AsyncStorage.getItem("access_token");
+
+  //     if (token) {
+  //       router.replace("/(tabs)/home");
+  //     }
+  //   };
+
+  //   checkLogin();
+  // }, []);
+
   // Ref để chuyển focus mượt mà từ Email sang Mật khẩu
   const passwordInputRef = useRef<TextInput>(null);
 
@@ -38,16 +50,16 @@ export default function LoginScreen() {
     try {
       console.log("Email state:", email);
       console.log("Password state:", password);
-      
+
       if (!email || !password) {
         console.error("Email or password is empty");
         return;
       }
-      
+
       const response = await loginUser(email, password);
       console.log("Login response:", response);
-      
-      router.replace('/(tabs)/home');
+
+      router.replace("/(tabs)/home");
     } catch (error: any) {
       console.error("Login error:", error.message);
     }
@@ -148,7 +160,7 @@ export default function LoginScreen() {
 const createStyles = (theme: ReturnType<typeof useTheme>) => {
   const inputShadow = Platform.select({
     ios: {
-      shadowColor: '#000',
+      shadowColor: "#000",
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.04,
       shadowRadius: 3,

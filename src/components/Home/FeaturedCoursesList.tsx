@@ -3,7 +3,7 @@ import type { LiferayCatalogProduct } from "@/src/services/liferayService";
 import { getProducts } from "@/src/services/liferayService";
 import { useTheme } from "@/src/theme";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
 import { AppText } from "../common/AppText";
 import { CourseCard } from "../CourseCard";
@@ -31,7 +31,11 @@ export const FeaturedCoursesList = ({
   const loadFeaturedCourses = async () => {
     setLoading(true);
     try {
-      const response = await getProducts({ pageSize: limit, categoryId, page: 1 });
+      const response = await getProducts({
+        pageSize: limit,
+        categoryId,
+        page: 1,
+      });
       setCourses(response.items);
     } catch (error) {
       console.error("Lỗi load featured courses:", error);
@@ -67,7 +71,7 @@ export const FeaturedCoursesList = ({
             {/* addToCart + navigate /cart hoặc /cart/checkout đã xử lý trong CourseCard */}
             <CourseCard
               course={item}
-              onPress={() => router.push(`/course/${item.id}`)}
+              onPress={() => router.push(`/course/${item.productId!}`)}
             />
           </View>
         )}
@@ -78,7 +82,12 @@ export const FeaturedCoursesList = ({
 
 const styles = StyleSheet.create({
   container: { marginVertical: 12 },
-  title: { fontSize: 18, fontWeight: "bold", marginHorizontal: 16, marginBottom: 8 },
+  title: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
   listContent: { paddingHorizontal: 16, gap: 12 },
   cardWrapper: { width: 250 },
 });

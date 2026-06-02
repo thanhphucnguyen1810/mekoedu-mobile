@@ -1,30 +1,33 @@
 // src/services/siteService.ts
-import { getUserToken } from './liferayService'; // SỬA import
+import { ENV } from "../types/env";
+import { getUserToken } from "./liferayService"; // SỬA import
 
 class SiteService {
   private cachedSiteId: string | null = null;
-  private baseURL = 'http://192.168.2.152:8080';
 
   // THÊM helper mới
   private async getAuthHeaders(): Promise<HeadersInit> {
     const token = await getUserToken();
     if (!token) {
-      throw new Error('User not authenticated. Please login first.');
+      throw new Error("User not authenticated. Please login first.");
     }
     return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-      'Accept': 'application/json',
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
     };
   }
 
   // SỬA apiRequest để dùng user token
-  private async apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  private async apiRequest<T>(
+    endpoint: string,
+    options: RequestInit = {},
+  ): Promise<T> {
     const headers = await this.getAuthHeaders();
-    const url = `${this.baseURL}${endpoint}`;
-    
+    const url = `${ENV.API_URL}${endpoint}`;
+
     console.log(`🌐 API Request: ${endpoint}`);
-    
+
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -36,7 +39,7 @@ class SiteService {
     console.log(`📊 Response Status: ${response.status}`);
 
     const responseText = await response.text();
-    
+
     if (!response.ok) {
       console.error(`❌ API Error ${response.status}:`);
       console.error(`URL: ${endpoint}`);
@@ -56,10 +59,12 @@ class SiteService {
 
   async getMySites() {
     try {
-      const response = await this.apiRequest<{ items: any[] }>('/o/headless-admin-user/v1.0/my-user-account/sites');
+      const response = await this.apiRequest<{ items: any[] }>(
+        "/o/headless-admin-user/v1.0/my-user-account/sites",
+      );
       return response.items || [];
     } catch (error) {
-      console.error('❌ Lỗi lấy danh sách sites:', error);
+      console.error("❌ Lỗi lấy danh sách sites:", error);
       return [];
     }
   }
@@ -70,7 +75,7 @@ class SiteService {
     }
 
     // Dùng site ID từ config
-    const configSiteId = '20121';
+    const configSiteId = "20121";
     console.log(`📌 Using configured site ID: ${configSiteId}`);
     this.cachedSiteId = configSiteId;
     return configSiteId;

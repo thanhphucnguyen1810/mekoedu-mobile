@@ -5,5 +5,5 @@ export default function RoomScreen() {
     <View>
       <Text>Room</Text>
     </View>
-  )
+  );
 }
