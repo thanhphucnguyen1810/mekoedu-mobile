@@ -1,187 +1,205 @@
-import React from 'react';
+import { useTheme } from "@/src/theme";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import {
-  FlatList,
-  Image,
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
   StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
-  useWindowDimensions,
-} from 'react-native';
+} from "react-native";
+import categoriesService from "../services/categoriesService";
+import { AppText } from "./common/AppText";
 
-import { useTheme } from '@/src/theme';
-
-export interface Category {
-  id: string;
+interface CategoryItem {
+  id: number;
   name: string;
-  imageUrl: string;
 }
 
-interface CategoryGridProps {
-  categories: readonly Category[];
-  onCategoryPress?: (id: string) => void;
-}
+const CategoryGrid = () => {
+  const router = useRouter();
+  const { c, spacing } = useTheme();
 
-// Breakpoints cho responsive
-const BREAKPOINTS = {
-  phone: 480,
-  tablet: 768,
-  tabletLg: 1024,
-};
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-function getVisibleItemCount(width: number): number {
-  if (width >= BREAKPOINTS.tabletLg) return 8.5;
-  if (width >= BREAKPOINTS.tablet) return 6.5;
-  if (width >= BREAKPOINTS.phone) return 6.2;
-  return 5.2;
-}
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const response = await categoriesService.getCategories();
 
-function getIconBoxSize(width: number): number {
-  if (width >= BREAKPOINTS.tabletLg) return 64;
-  if (width >= BREAKPOINTS.tablet) return 58;
-  if (width >= BREAKPOINTS.phone) return 56;
-  return 52;
-}
+        if (response.length > 0) {
+          setCategories(response);
+        }
+      } catch (error) {
+        console.warn("Failed to load categories", error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-function getLabelFontSize(width: number): number {
-  if (width >= BREAKPOINTS.tablet) return 12;
-  return 11;
-}
+    loadCategories();
+  }, []);
 
-export const CategoryGrid = ({ categories, onCategoryPress }: CategoryGridProps) => {
-  const { width: windowWidth } = useWindowDimensions();
-  
-  const { c, colors, radius, spacing, typography } = useTheme();
+  const handleCategoryPress = (category: CategoryItem) => {
+    // router.push({
+    //   pathname: "/category/[id]",
+    //   params: {
+    //     id: String(category.id),
+    //     name: category.name,
+    //   },
+    // });
+  };
 
-  const visibleCount = getVisibleItemCount(windowWidth);
-  const iconBoxSize = getIconBoxSize(windowWidth);
-  const labelFontSize = getLabelFontSize(windowWidth);
-
-  const availableWidth = windowWidth - spacing.layout.screenHorizontal * 2;
-  const itemWidth = availableWidth / visibleCount;
-
-  const CategoryImage = ({ url, size, borderRadius }: { url: string; size: number; borderRadius: number }) => {
-    const [hasError, setHasError] = React.useState(false);
-
-    if (!url || hasError) {
-      return (
-        <View
-          style={[
-            styles.fallbackImage,
-            {
-              width: size,
-              height: size,
-              borderRadius,
-              backgroundColor: colors.neutral[200],
-            },
-          ]}
-        >
-          <Text style={{ color: colors.neutral[500], fontSize: size * 0.3 }}>
-            🖼️
-          </Text>
-        </View>
-      );
-    }
-
-    return (
-      <Image
-        source={{ uri: url }}
-        style={[
-          styles.image,
-          {
-            width: size,
-            height: size,
-            borderRadius,
-          }
-        ]}
-        resizeMode="cover"
-        onError={() => setHasError(true)}
-      />
-    );
+  const handleCategoriesPress = () => {
+    router.push("/categories");
   };
 
   return (
-    <FlatList
-      data={categories}
-      keyExtractor={(item) => item.id}
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={[
-        { paddingVertical: spacing.xs }
-      ]}
-      snapToInterval={itemWidth}
-      decelerationRate="fast"
-      renderItem={({ item }) => (
-        <TouchableOpacity
-          style={[styles.item, { width: itemWidth, gap: spacing.sm - 2 }]}
-          onPress={() => onCategoryPress?.(item.id)}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel={item.name}
-        >
-          <View
-            style={[
-              styles.imageBox,
+    <View
+      style={{
+        backgroundColor: c.bg,
+        marginHorizontal: spacing.sm,
+      }}
+    >
+      {loading && categories.length === 0 ? (
+        <View style={styles.loadingWrapper}>
+          <ActivityIndicator size="small" color={c.primary} />
+        </View>
+      ) : (
+        <View style={styles.wrapper}>
+          <Pressable
+            onPress={handleCategoriesPress}
+            style={({ pressed }) => [
+              styles.tileWrapper,
               {
-                width: iconBoxSize,
-                height: iconBoxSize,
-                borderRadius: radius.md,
-                backgroundColor: colors.primary[100],
-                shadowColor: colors.neutral[1000],
+                opacity: pressed ? 0.85 : 1,
+                marginRight: spacing.sm,
               },
             ]}
           >
-            <CategoryImage 
-              url={item.imageUrl} 
-              size={iconBoxSize} 
-              borderRadius={radius.md}
-            />
-          </View>
+            <View
+              style={[
+                styles.tile,
+                {
+                  backgroundColor: c.bgSoft,
+                  borderColor: c.border,
+                },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="shape-outline"
+                size={28}
+                color={c.text}
+              />
+            </View>
 
-          <Text
-            style={[
-              typography.variants.caption,
-              styles.label,
+            <AppText
+              style={[
+                styles.tileLabel,
+                {
+                  color: c.text,
+                },
+              ]}
+              numberOfLines={1}
+            >
+              Danh mục
+            </AppText>
+          </Pressable>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={[
+              styles.row,
               {
-                color: c.text,
-                fontSize: labelFontSize,
-                lineHeight: labelFontSize + 3,
-                paddingHorizontal: spacing[1] / 2,
+                gap: spacing.sm,
               },
             ]}
-            numberOfLines={2}
           >
-            {item.name}
-          </Text>
-        </TouchableOpacity>
+            {categories.map((category) => (
+              <Pressable
+                key={category.id}
+                onPress={() => handleCategoryPress(category)}
+                style={({ pressed }) => [
+                  styles.tileWrapper,
+                  {
+                    opacity: pressed ? 0.85 : 1,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.tile,
+                    {
+                      backgroundColor: c.bgSoft,
+                      borderColor: c.border,
+                    },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="apps"
+                    size={28}
+                    color={c.text}
+                  />
+                </View>
+
+                <AppText
+                  style={[
+                    styles.tileLabel,
+                    {
+                      color: c.text,
+                    },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {category.name}
+                </AppText>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
       )}
-    />
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  item: {
-    alignItems: 'center',
+  loadingWrapper: {
+    paddingVertical: 24,
+    alignItems: "center",
   },
-  imageBox: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 1,
-    overflow: 'hidden',
+
+  wrapper: {
+    flexDirection: "row",
+    alignItems: "center",
   },
-  image: {
-    // Style sẽ được override inline
+
+  row: {
+    paddingVertical: 6,
+    alignItems: "center",
   },
-  fallbackImage: {
-    alignItems: 'center',
-    justifyContent: 'center',
+
+  tileWrapper: {
+    width: 64,
+    alignItems: "center",
   },
-  label: {
-    textAlign: 'center',
-    fontWeight: '500',
-    width: '100%',
+
+  tile: {
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  tileLabel: {
+    marginTop: 6,
+    fontSize: 12,
+    textAlign: "center",
   },
 });
+
+export default CategoryGrid;

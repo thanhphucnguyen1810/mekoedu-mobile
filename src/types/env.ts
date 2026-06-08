@@ -6,4 +6,5 @@ export const ENV = {
   PASSWORD: process.env.EXPO_PUBLIC_PASSWORD ?? "",
   CHANNEL_ID: process.env.EXPO_PUBLIC_CHANNEL_ID ?? "",
   SITE_ID: process.env.EXPO_PUBLIC_SITE_ID ?? "",
+  VOCABULARY_ID: process.env.EXPO_PUBLIC_CATEGORY_ID ?? "",
 };

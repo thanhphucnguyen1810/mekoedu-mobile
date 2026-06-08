@@ -1,217 +1,170 @@
-// src/components/ProductCard/index.tsx
-import { useTheme } from '@/src/theme';
-import React from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { AppText } from "@/src/components/common/AppText";
+import { useTheme } from "@/src/theme";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Image, Pressable, StyleSheet, View } from "react-native";
+
+const BORDER_RADIUS = 5;
 
 interface ProductCardProps {
-  id: string | number;
-  title: string;
-  price: number | { price: number };
-  duration?: string;
-  lessonCount?: number;
-  rating?: number;
-  reviewCount?: number;
-  imageUrl: string;
-  brandName: string;
-  brandLogoChar: string;
-  onPress: () => void;
-  onAddToCartPress: () => void;
-  onBuyCoursePress: () => void;
+  item: any;
+  onPress?: (item: any) => void;
 }
 
-  
-function formatPrice(priceValue: number | undefined | null | { price?: number }) {
-  // Nếu là object, lấy price.price
-  let actualPrice: number | undefined | null;
-  
-  if (typeof priceValue === 'object' && priceValue !== null) {
-    actualPrice = priceValue.price;
-  } else {
-    actualPrice = priceValue as number | undefined | null;
-  }
-  
-  // Kiểm tra giá trị hợp lệ
-  if (!actualPrice || actualPrice === 0 || isNaN(actualPrice)) {
-    return "Miễn phí";
-  }
-  
-  return actualPrice.toLocaleString("vi-VN") + "đ";
-}
+const ProductCard = ({ item, onPress }: ProductCardProps) => {
+  const { c } = useTheme();
 
+  const price = item.skus?.price;
 
-export const ProductCard: React.FC<ProductCardProps> = ({
-  title,
-  price,
-  duration,
-  lessonCount,
-  rating,
-  reviewCount,
-  imageUrl,
-  brandName,
-  brandLogoChar,
-  onPress,
-  onAddToCartPress,
-  onBuyCoursePress,
-}) => {
-  const { c, spacing, radius } = useTheme();
-  console.log(imageUrl);
-  
+  const originalPrice = price?.price ?? 0;
+  const promoPrice = price?.promoPrice ?? 0;
+
+  const hasDiscount = promoPrice > 0 && promoPrice < originalPrice;
+
+  const discountPercent = hasDiscount
+    ? Math.round(((originalPrice - promoPrice) / originalPrice) * 100)
+    : 0;
+
+  const originalPriceText = price?.priceFormatted ?? `$ ${originalPrice}`;
+
+  const promoPriceText = hasDiscount
+    ? (price?.promoPriceFormatted ?? `$ ${promoPrice}`)
+    : (price?.priceFormatted ?? `$ ${originalPrice}`);
+
   return (
-    <TouchableOpacity 
-      style={[styles.card, { 
-        backgroundColor: c.bg,
-        borderRadius: radius.lg,
-        borderColor: c.border 
-      }]} 
-      onPress={onPress}
-      activeOpacity={0.9}
+    <Pressable
+      onPress={() => onPress?.(item)}
+      style={[styles.card, { backgroundColor: c.bgSoft }]}
     >
-      <Image 
-        source={{ uri: imageUrl }} 
-        style={[styles.image, { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg }]} 
-      />
-      
-      <View style={styles.content}>
-        <View style={styles.brandRow}>
-          <View style={[styles.brandLogo, { backgroundColor: c.primary + '20' }]}>
-            <Text style={[styles.brandLogoText, { color: c.primary }]}>{brandLogoChar || 'M'}</Text>
+      <View style={styles.imageBox}>
+        <Image source={{ uri: item.urlImage }} style={styles.image} />
+
+        {hasDiscount && (
+          <View style={[styles.discountBadge, { backgroundColor: c.primary }]}>
+            <AppText style={styles.discountText}>-{discountPercent}%</AppText>
           </View>
-          <Text style={[styles.brandName, { color: c.textSub }]} numberOfLines={1}>
-            {brandName || 'MekoEdu'}
-          </Text>
+        )}
+      </View>
+
+      <View style={styles.cardBody}>
+        <AppText numberOfLines={2} style={[styles.title, { color: c.text }]}>
+          {item.name}
+        </AppText>
+
+        <AppText
+          numberOfLines={1}
+          style={[styles.author, { color: c.textSub }]}
+        >
+          Tác giả: {item.productSpecifications?.author ?? "MekoEdu"}
+        </AppText>
+
+        <View style={styles.metaRow}>
+          <MaterialCommunityIcons
+            name="clock-outline"
+            size={13}
+            color={c.textSub}
+          />
+          <AppText style={[styles.metaText, { color: c.textSub }]}>
+            {item.productSpecifications?.courseDuration ?? "0"} giờ
+          </AppText>
         </View>
-        
-        <Text style={[styles.title, { color: c.text }]} numberOfLines={2}>
-          {title}
-        </Text>
-        
-        <View style={styles.statsRow}>
-          <Text style={[styles.statsText, { color: c.textSub }]}>⏱ {duration || 'Chưa cập nhật'}</Text>
-          <Text style={[styles.statsText, { color: c.textSub }]}>📚 {lessonCount ?? 0} bài</Text>
-        </View>
-        
-        <View style={styles.ratingRow}>
-          <Text style={styles.ratingStar}>⭐</Text>
-          <Text style={[styles.ratingText, { color: c.text }]}>
-            {(rating ?? 0).toFixed(1)}
-          </Text>
-          <Text style={[styles.reviewText, { color: c.textSub }]}>({reviewCount ?? 0})</Text>
-        </View>
-        
-        <Text style={[styles.price, { color: c.primary }]}>{formatPrice(price)}</Text>
-        
-        <View style={styles.buttonRow}>
-          <TouchableOpacity 
-            style={[styles.cartButton, { borderColor: c.border }]} 
-            onPress={onAddToCartPress}
+
+        <View style={styles.priceRow}>
+          {hasDiscount && (
+            <AppText
+              numberOfLines={1}
+              style={[styles.oldPrice, { color: c.textSub }]}
+            >
+              {originalPriceText}
+            </AppText>
+          )}
+
+          <AppText
+            numberOfLines={1}
+            style={[styles.price, { color: c.primary }]}
           >
-            <Text style={[styles.cartButtonText, { color: c.primary }]}>🛒</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.buyButton, { backgroundColor: c.primary }]} 
-            onPress={onBuyCoursePress}
-          >
-            <Text style={[styles.buyButtonText, { color: '#FFF' }]}>Mua ngay</Text>
-          </TouchableOpacity>
+            {promoPriceText}
+          </AppText>
         </View>
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 };
 
+export default ProductCard;
+
 const styles = StyleSheet.create({
   card: {
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  image: {
-    width: '100%',
-    height: 120,
-    resizeMode: 'cover',
-  },
-  content: {
-    padding: 12,
-  },
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  brandLogo: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 6,
-  },
-  brandLogoText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  brandName: {
-    fontSize: 11,
     flex: 1,
+    borderRadius: BORDER_RADIUS,
+    overflow: "hidden",
   },
+
+  imageBox: {
+    position: "relative",
+    backgroundColor: "#eee",
+  },
+
+  image: {
+    width: "100%",
+    height: 150,
+  },
+
+  discountBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BORDER_RADIUS,
+  },
+
+  discountText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
+  cardBody: {
+    padding: 10,
+  },
+
   title: {
     fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-    lineHeight: 18,
+    fontWeight: "700",
+    lineHeight: 19,
   },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  statsText: {
-    fontSize: 11,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  ratingStar: {
+
+  author: {
     fontSize: 12,
-    marginRight: 4,
+    marginTop: 4,
   },
-  ratingText: {
+
+  metaRow: {
+    marginTop: 5,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+
+  metaText: {
     fontSize: 12,
-    fontWeight: '600',
-    marginRight: 4,
   },
-  reviewText: {
-    fontSize: 11,
+
+  priceRow: {
+    marginTop: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
   },
+
+  oldPrice: {
+    fontSize: 12,
+    textDecorationLine: "line-through",
+    flexShrink: 1,
+  },
+
   price: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  cartButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  cartButtonText: {
-    fontSize: 16,
-  },
-  buyButton: {
-    flex: 2,
-    borderRadius: 8,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  buyButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: "800",
   },
 });

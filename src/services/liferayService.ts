@@ -48,10 +48,14 @@ export interface LiferayTokenResponse {
 
 export interface LiferayUserInfo {
   id: number;
+  name: string;
   emailAddress: string;
   givenName: string;
   familyName: string;
   alternateName: string;
+  image?: string;
+  hasLoginDate?: boolean;
+  lastLoginDate?: string;
   roleBriefs?: { id: number; name: string }[];
 }
 
@@ -306,17 +310,17 @@ export async function logoutUser() {
 }
 
 // ─── 4. Get current user info ────────────────────────────────────────────────
-export async function getMyUserInfo(): Promise<LiferayUserInfo | null> {
-  const token = await getUserToken();
-  if (!token) {
-    console.warn("No user token found");
-    return null;
-  }
+// export async function getMyUserInfo(): Promise<LiferayUserInfo | null> {
+//   const token = await getUserToken();
+//   if (!token) {
+//     console.warn("No user token found");
+//     return null;
+//   }
 
-  return fetchJSON<LiferayUserInfo>(
-    "/o/headless-admin-user/v1.0/my-user-account",
-  );
-}
+//   return fetchJSON<LiferayUserInfo>(
+//     "/o/headless-admin-user/v1.0/my-user-account",
+//   );
+// }
 
 // ─── 5. Get products from Commerce Channel ───────────────────────────────────
 export async function getProducts(
@@ -442,16 +446,16 @@ export async function searchProducts(keyword: string, page = 1, pageSize = 20) {
 }
 
 // ─── Check if user is authenticated ──────────────────────────────────────────
-export async function isAuthenticated(): Promise<boolean> {
-  const token = await getUserToken();
-  if (!token) return false;
+// export async function isAuthenticated(): Promise<boolean> {
+//   const token = await getUserToken();
+//   if (!token) return false;
 
-  try {
-    const userInfo = await getMyUserInfo();
-    return userInfo !== null;
-  } catch {
-    return false;
-  }
-}
+//   try {
+//     const userInfo = await getMyUserInfo();
+//     return userInfo !== null;
+//   } catch {
+//     return false;
+//   }
+// }
 
 export { getUserToken, refreshAccessToken } from "./tokenService";

@@ -35,7 +35,6 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       try {
         const refreshToken = await getRefreshToken();
-        console.log("hahahahahhahahahah");
         if (!refreshToken) {
           throw new Error("No refresh token");
         }

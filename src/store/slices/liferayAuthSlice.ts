@@ -6,7 +6,7 @@
  */
 
 import {
-  getMyUserInfo,
+
   loginUser,
   refreshAccessToken,
   registerUser,
@@ -40,16 +40,16 @@ const initialState: LiferayAuthState = {
 // ─── Thunks ───────────────────────────────────────────────────────────────────
 
 /** Khôi phục session khi app khởi động */
-export const rehydrateLiferayAuth = createAsyncThunk(
-  "liferayAuth/rehydrate",
-  async () => {
-    const accessToken    = await SecureStore.getItemAsync(KEY_ACCESS);
-    const storedRefresh  = await SecureStore.getItemAsync(KEY_REFRESH);
-    if (!accessToken) return null;
-    const user = await getMyUserInfo(accessToken).catch(() => null);
-    return { accessToken, refreshToken: storedRefresh, user };
-  }
-);
+// export const rehydrateLiferayAuth = createAsyncThunk(
+//   "liferayAuth/rehydrate",
+//   async () => {
+//     const accessToken    = await SecureStore.getItemAsync(KEY_ACCESS);
+//     const storedRefresh  = await SecureStore.getItemAsync(KEY_REFRESH);
+//     if (!accessToken) return null;
+//     const user = await getMyUserInfo(accessToken).catch(() => null);
+//     return { accessToken, refreshToken: storedRefresh, user };
+//   }
+// );
 
 /** Đăng nhập */
 export const liferayLogin = createAsyncThunk(
@@ -133,13 +133,13 @@ const liferayAuthSlice = createSlice({
   extraReducers: (builder) => {
     builder
       // rehydrate
-      .addCase(rehydrateLiferayAuth.fulfilled, (state, action) => {
-        if (action.payload) {
-          state.accessToken  = action.payload.accessToken;
-          state.refreshToken = action.payload.refreshToken ?? null;
-          state.user         = action.payload.user;
-        }
-      })
+      // .addCase(rehydrateLiferayAuth.fulfilled, (state, action) => {
+      //   if (action.payload) {
+      //     state.accessToken  = action.payload.accessToken;
+      //     state.refreshToken = action.payload.refreshToken ?? null;
+      //     state.user         = action.payload.user;
+      //   }
+      // })
 
       // login
       .addCase(liferayLogin.pending,   (state) => { state.loading = true; state.error = null; })

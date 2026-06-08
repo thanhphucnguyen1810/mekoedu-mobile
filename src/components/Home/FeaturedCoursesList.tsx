@@ -1,12 +1,11 @@
 // src/components/FeaturedCoursesList/index.tsx
-import type { LiferayCatalogProduct } from "@/src/services/liferayService";
-import { getProducts } from "@/src/services/liferayService";
+import ProductCard from "@/src/components/ProductCard";
+import productService, { IProduct } from "@/src/services/productService";
 import { useTheme } from "@/src/theme";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
 import { AppText } from "../common/AppText";
-import { CourseCard } from "../CourseCard";
 
 interface FeaturedCoursesListProps {
   title: string;
@@ -17,11 +16,12 @@ interface FeaturedCoursesListProps {
 export const FeaturedCoursesList = ({
   title,
   categoryId,
-  limit = 5,
+  limit = 6,
 }: FeaturedCoursesListProps) => {
   const router = useRouter();
   const { c, spacing } = useTheme();
-  const [courses, setCourses] = useState<LiferayCatalogProduct[]>([]);
+
+  const [courses, setCourses] = useState<IProduct[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -29,65 +29,82 @@ export const FeaturedCoursesList = ({
   }, [categoryId]);
 
   const loadFeaturedCourses = async () => {
-    setLoading(true);
     try {
-      const response = await getProducts({
-        pageSize: limit,
+      setLoading(true);
+
+      const products = await productService.getProducts(1, limit, {
         categoryId,
-        page: 1,
       });
-      setCourses(response.items);
+
+      setCourses(products);
     } catch (error) {
       console.error("Lỗi load featured courses:", error);
+      setCourses([]);
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        <AppText style={styles.title}>{title}</AppText>
-        <View style={{ padding: spacing[4], alignItems: "center" }}>
+  return (
+    <View style={styles.section}>
+      <View style={styles.header}>
+        <AppText style={[styles.title, { color: c.text }]}>{title}</AppText>
+      </View>
+
+      {loading ? (
+        <View style={[styles.loadingBox, { paddingVertical: spacing[4] }]}>
           <ActivityIndicator size="small" color={c.primary} />
         </View>
-      </View>
-    );
-  }
-
-  if (courses.length === 0) return null;
-
-  return (
-    <View style={styles.container}>
-      <AppText style={styles.title}>{title}</AppText>
-      <FlatList
-        data={courses}
-        keyExtractor={(item) => item.id.toString()}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
-          <View style={styles.cardWrapper}>
-            {/* addToCart + navigate /cart hoặc /cart/checkout đã xử lý trong CourseCard */}
-            <CourseCard
-              course={item}
-              onPress={() => router.push(`/course/${item.productId!}`)}
-            />
-          </View>
-        )}
-      />
+      ) : courses.length === 0 ? null : (
+        <FlatList
+          data={courses}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={styles.listContent}
+          renderItem={({ item }) => (
+            <View style={styles.cardWrapper}>
+              <ProductCard
+                item={item}
+                onPress={() =>
+                  router.push(`/course/${item.productId ?? item.id}`)
+                }
+              />
+            </View>
+          )}
+        />
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { marginVertical: 12 },
-  title: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginHorizontal: 16,
-    marginBottom: 8,
+  section: {
+    marginTop: 14,
   },
-  listContent: { paddingHorizontal: 16, gap: 12 },
-  cardWrapper: { width: 250 },
+
+  header: {
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+
+  title: {
+    fontSize: 17,
+    fontWeight: "800",
+  },
+
+  loadingBox: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  listContent: {
+    paddingHorizontal: 12,
+    paddingBottom: 6,
+    gap: 10,
+  },
+
+  cardWrapper: {
+    width: 155,
+  },
 });

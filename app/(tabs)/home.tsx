@@ -1,8 +1,17 @@
 import { AppHeader } from "@/src/components/common";
-import { DYNAMIC_HOME_CONFIG, HomeComponentsMap } from "@/src/components/Home/HomeRegistry";
+import {
+  DYNAMIC_HOME_CONFIG,
+  HomeComponentsMap,
+} from "@/src/components/Home/HomeRegistry";
 import { useTheme } from "@/src/theme";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, View } from "react-native";
+import {
+  ActivityIndicator,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
 
 export default function HomeScreen() {
   const { c } = useTheme();
@@ -11,7 +20,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     // Sắp xếp các phân vùng hiển thị theo thứ tự "order" đã thiết lập
-    const activeSections = DYNAMIC_HOME_CONFIG.sections
+    const activeSections = (DYNAMIC_HOME_CONFIG?.sections ?? [])
       .filter((sec) => sec.visible)
       .sort((a, b) => a.order - b.order);
 
@@ -21,7 +30,14 @@ export default function HomeScreen() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: c.bg }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: c.bg,
+        }}
+      >
         <ActivityIndicator size="large" color={c.primary} />
       </View>
     );
@@ -38,12 +54,7 @@ export default function HomeScreen() {
             return null;
           }
 
-          return (
-            <ComponentToRender 
-              key={section.id} 
-              {...section.props}
-            />
-          );
+          return <ComponentToRender key={section.id} {...section.props} />;
         })}
       </ScrollView>
     </SafeAreaView>
@@ -53,5 +64,5 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  }
+  },
 });

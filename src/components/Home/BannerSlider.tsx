@@ -1,7 +1,14 @@
 import { Radius } from "@/src/theme";
 import { Image } from "expo-image";
-import React, { useEffect, useRef, useState } from "react";
-import { Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, StyleSheet, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import {
+  Dimensions,
+  FlatList,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  StyleSheet,
+  View,
+} from "react-native";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CAROUSEL_WIDTH = SCREEN_WIDTH - 24;
@@ -23,7 +30,7 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
       if (nextIndex >= banners.length) {
         nextIndex = 0;
       }
-      
+
       setActiveIndex(nextIndex);
       flatListRef.current?.scrollToIndex({
         index: nextIndex,
@@ -96,7 +103,7 @@ const styles = StyleSheet.create({
   slideWrapper: {
     width: CAROUSEL_WIDTH,
     height: 160,
-    paddingHorizontal: 4,
+    paddingHorizontal: 8,
   },
   image: {
     width: "100%",
