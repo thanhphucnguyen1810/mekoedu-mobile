@@ -1,10 +1,5 @@
-/**
- * liferayService.ts
- * Liferay DXP – Auth (OAuth2) + Headless Commerce Catalog API
- * CHỈ DÙNG USER TOKEN, KHÔNG DÙNG CLIENT CREDENTIALS
- */
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios, { AxiosError } from 'axios';
 import Constants from "expo-constants";
 
 const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, string>;
@@ -15,7 +10,6 @@ const CLIENT_SECRET = extra.LIFERAY_CLIENT_SECRET ?? "secret-7f2d4270-6b84-de1d-
 const CHANNEL_ID = extra.LIFERAY_CHANNEL_ID ?? "33290";
 const SITE_ID = extra.LIFERAY_SITE_ID ?? "20117";
 
-// Hàm sửa URL ảnh DỰA THEO BASE_URL
 const fixImageUrl = (url: string) => {
   if (!url) return '';
   
@@ -47,6 +41,11 @@ export interface LiferayUserInfo {
   givenName: string;
   familyName: string;
   alternateName: string;
+  accountBriefs?: {
+    id: number;
+    name: string;
+    externalReferenceCode?: string;
+  }[];
   roleBriefs?: { id: number; name: string }[];
 }
 
@@ -102,7 +101,7 @@ export async function getUserToken(): Promise<string | null> {
   try {
     const token = await AsyncStorage.getItem('access_token');
     if (token) {
-      console.log("✅ User token found");
+      console.log("User token found");
       return token;
     }
     return null;
@@ -112,49 +111,81 @@ export async function getUserToken(): Promise<string | null> {
   }
 }
 
-async function fetchJSON<T>(url: string, token: string, options: RequestInit = {}): Promise<T> {
-  console.log("📡 Fetching:", url);
-  
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`,
-      "Accept": "application/json",
-      ...options.headers,
-    },
-  });
-
-  console.log(`📊 Response Status: ${response.status}`);
-  console.log(`📊 Content-Type: ${response.headers.get("content-type")}`);
-
-  const contentType = response.headers.get("content-type") || "";
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("--- API ERROR ---");
-    console.error("URL:", url);
-    console.error("Status:", response.status);
-    console.error("Response:", errorText.substring(0, 500));
-    throw new Error(`[API ${response.status}]`);
+async function getClientToken(): Promise<string | null> {
+  try {
+    const credentials = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
+    const response = await axios.post(
+      `${BASE_URL}/o/oauth2/token`,
+      new URLSearchParams({ grant_type: "client_credentials" }).toString(),
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Basic ${credentials}`,
+        },
+      }
+    );
+    return response.data.access_token;
+  } catch (error) {
+    console.error("❌ Lỗi lấy client token:", error);
+    return null;
   }
+}
 
-  if (contentType.includes("xml") || contentType.includes("text/html")) {
-    console.error("❌ API returned XML/HTML instead of JSON!");
-    throw new Error("Invalid API response format. Please check endpoint URL.");
-  }
+let isRefreshing = false;
+let refreshSubscribers: ((token: string) => void)[] = [];
 
-  const responseText = await response.text();
+function onRefreshed (token: string) {
+  refreshSubscribers.forEach(cb => cb(token));
+  refreshSubscribers = [];
+}
+
+async function refreshTokenIfNeeded(): Promise<string | null> {
+  const refreshToken = await AsyncStorage.getItem('refresh_token');
+  if (!refreshToken) return null;
   
   try {
-    const data = JSON.parse(responseText) as T;
-    const dataAny = data as any;
+    const newTokens = await refreshAccessToken(refreshToken);
+    return newTokens.access_token;
+  } catch (error) {
+    console.error("Failed to refresh token:", error);
+    await logoutUser();
+    return null;
+  }
+}
+
+async function axiosRequest<T>(url: string, token: string, options: any = {}, retryCount = 0): Promise<T> {
+  console.log("Fetching:", url);
+  const maxRetries = 2;
+  
+  try {
+    const response = await axios({
+      url,
+      method: options.method || 'GET',
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/json",
+        ...options.headers,
+      },
+      data: options.body,
+      params: options.params,
+      timeout: 30000,
+    });
+
+    console.log(`Response Status: ${response.status}`);
+    const contentType = String(response.headers["content-type"] || "");
+    if (contentType.includes("xml") || contentType.includes("text/html")) {
+      console.error("API returned XML/HTML instead of JSON!");
+      throw new Error("Invalid API response format. Please check endpoint URL.");
+    }
+
+    let data = response.data;
     
-    // Chỉ xử lý images, bỏ urlImage
-    if (dataAny && typeof dataAny === 'object') {
+    // xử lý images
+    if (data && typeof data === 'object') {
       // Nếu là ProductList (có items)
-      if ('items' in dataAny && Array.isArray(dataAny.items)) {
-        dataAny.items = dataAny.items.map((product: any) => ({
+      if ('items' in data && Array.isArray(data.items)) {
+        data.items = data.items.map((product: any) => ({
           ...product,
           images: product.images?.map((img: any) => ({
             ...img,
@@ -163,8 +194,8 @@ async function fetchJSON<T>(url: string, token: string, options: RequestInit = {
         }));
       }
       // Nếu là single product (có images)
-      else if (dataAny.images && Array.isArray(dataAny.images)) {
-        dataAny.images = dataAny.images.map((img: any) => ({
+      else if (data.images && Array.isArray(data.images)) {
+        data.images = data.images.map((img: any) => ({
           ...img,
           src: fixImageUrl(img.src || img.url)
         }));
@@ -172,10 +203,54 @@ async function fetchJSON<T>(url: string, token: string, options: RequestInit = {
     }
     
     return data;
-  } catch (parseError) {
-    console.error("❌ JSON Parse Error");
-    console.error("Raw response:", responseText.substring(0, 500));
-    throw new Error(`Invalid JSON response`);
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const axiosError = error as AxiosError;
+      const status = axiosError.response?.status;
+
+      console.error("--- API ERROR ---");
+      console.error("URL:", url);
+      console.error("Status:", status);
+
+      // Nếu là 401 và còn lượt retry
+      if (status === 401 && retryCount < maxRetries) {
+        console.log('Token expired, attempting refresh...');
+
+        //Nếu đang refresh, đợi refresh xong
+         if (isRefreshing) {
+          return new Promise((resolve, reject) => {
+            refreshSubscribers.push(async (newToken) => {
+              try {
+                const result = await axiosRequest(url, newToken, options, retryCount + 1);
+                resolve(result);
+              } catch (err) {
+                reject(err);
+              }
+            });
+          });
+        }
+        
+        isRefreshing = true;
+        
+        try {
+          const newToken = await refreshTokenIfNeeded();
+          if (newToken) {
+            console.log("✅ Token refreshed successfully");
+            onRefreshed(newToken);
+            // Thử lại request với token mới
+            return await axiosRequest(url, newToken, options, retryCount + 1);
+          } else {
+            throw new Error("Cannot refresh token");
+          }
+        } finally {
+          isRefreshing = false;
+        }
+      }
+      
+      console.error("Response:", JSON.stringify(axiosError.response?.data)?.substring(0, 500));
+      throw new Error(`[API ${status}]`);
+    }
+    throw error;
   }
 }
 
@@ -193,19 +268,21 @@ export async function registerUser(payload: RegisterPayload): Promise<LiferayUse
   const credentials = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
  
   // Bước 1: Lấy client_credentials token
-  const tokenRes = await fetch(`${BASE_URL}/o/oauth2/token`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Authorization": `Basic ${credentials}`,
-    },
-    body: new URLSearchParams({ grant_type: "client_credentials" }).toString(),
-  });
+  const tokenResponse = await axios.post(
+    `${BASE_URL}/o/oauth2/token`,
+    new URLSearchParams({ grant_type: "client_credentials" }).toString(),
+    {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": `Basic ${credentials}`,
+      },
+    }
+  );
  
-  const tokenData = await tokenRes.json();
+  const tokenData = tokenResponse.data;
  
-  if (!tokenRes.ok) {
-    console.error("❌ Cannot get client token:", tokenData);
+  if (!tokenResponse.status.toString().startsWith('2')) {
+    console.error("Cannot get client token:", tokenData);
     throw new Error(tokenData.error_description || "Không thể kết nối server");
   }
  
@@ -221,47 +298,48 @@ export async function registerUser(payload: RegisterPayload): Promise<LiferayUse
       Math.floor(Math.random() * 9000 + 1000);
  
   // Bước 3: Tạo user
-  const createRes = await fetch(
-    `${BASE_URL}/o/headless-admin-user/v1.0/user-accounts`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${clientToken}`,
-        "Accept": "application/json",
-      },
-      body: JSON.stringify({
+  try {
+    const createResponse = await axios.post(
+      `${BASE_URL}/o/headless-admin-user/v1.0/user-accounts`,
+      {
         emailAddress: payload.emailAddress.trim(),
         givenName: payload.givenName.trim(),
         familyName: payload.familyName.trim(),
         alternateName: screenName,
         password: payload.password,
-      }),
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${clientToken}`,
+          "Accept": "application/json",
+        },
+      }
+    );
+ 
+    console.log("Register successful:", createResponse.data.emailAddress);
+    return createResponse.data as LiferayUserInfo;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response) {
+      console.error("Register failed:", error.response.data);
+      const createData = error.response.data;
+      // Liferay trả lỗi dạng { title, detail, status } hoặc { message }
+      const msg =
+        createData.detail ||
+        createData.title ||
+        createData.message ||
+        `[API ${error.response.status}] Đăng ký thất bại`;
+      throw new Error(msg);
     }
-  );
- 
-  const createData = await createRes.json();
- 
-  if (!createRes.ok) {
-    console.error("❌ Register failed:", createData);
-    // Liferay trả lỗi dạng { title, detail, status } hoặc { message }
-    const msg =
-      createData.detail ||
-      createData.title ||
-      createData.message ||
-      `[API ${createRes.status}] Đăng ký thất bại`;
-    throw new Error(msg);
+    throw error;
   }
- 
-  console.log("Register successful:", createData.emailAddress);
-  return createData as LiferayUserInfo;
 }
 
 
 // ─── 1. User Login ───────────────────────────────────────────────────────────
 export async function loginUser(email: string, password: string) {
   if (!email || !password) {
-    console.error("❌ Missing email or password");
+    console.error("Missing email or password");
     throw new Error("Email and password are required");
   }
 
@@ -280,39 +358,73 @@ export async function loginUser(email: string, password: string) {
   params.append('username', emailStr);
   params.append('password', passwordStr);
 
-  console.log("🔐 Logging in with email:", emailStr);
+  console.log("Logging in with email:", emailStr);
 
   try {
-    const response = await fetch(`${BASE_URL}/o/oauth2/token`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Authorization": `Basic ${credentials}`,
-      },
-      body: params.toString(),
-    });
+    const response = await axios.post(
+      `${BASE_URL}/o/oauth2/token`,
+      params.toString(),
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Authorization": `Basic ${credentials}`,
+        },
+      }
+    );
 
-    const data = await response.json();
+    const data = response.data;
     
-    if (!response.ok) {
-      console.error("❌ Login failed:", data);
-      throw new Error(data.error_description || data.error || "Login failed");
-    }
-
     if (data.access_token) {
       await AsyncStorage.setItem('access_token', data.access_token);
-      console.log("✅ Access token saved");
+      console.log("Access token saved");
     }
     
     if (data.refresh_token) {
       await AsyncStorage.setItem('refresh_token', data.refresh_token);
-      console.log("✅ Refresh token saved");
+      console.log("Refresh token saved");
     }
 
-    console.log("✅ Login successful for:", emailStr);
-    return data;
+    let userInfo = null;
+    let cartId = null;
+
+    try {
+      // Đợi token có hiệu lực
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const userInfo = await getMyUserInfo();
+      if (userInfo?.id) {
+        console.log(`📋 User ID: ${userInfo.id}`);
+        const accountId = userInfo.accountBriefs?.[0]?.id;
+        console.log(`🏢 Account ID: ${accountId}`);
+
+        // Kiểm tra cart đã có trong storage chưa
+        const savedCartId = await getSavedCartId();
+        if (savedCartId) {
+          console.log(`📦 Using existing cart from storage: ${savedCartId}`);
+          cartId = savedCartId;
+        } else {
+          console.log(`🛒 No cart found in storage. Set to null (will create on-demand).`);
+          cartId = null;
+          await AsyncStorage.removeItem('cart_id');
+        }
+      }
+    } catch (err) {
+      console.log("⚠️ Could not fetch cart after login:", err);
+    }
+
+    console.log("Login successful for:", emailStr);
+    return {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      userInfo: userInfo,
+      cartId: cartId
+    };
   } catch (error) {
-    console.error("❌ Login error:", error);
+    if (axios.isAxiosError(error) && error.response) {
+      console.error("Login failed:", error.response.data);
+      throw new Error(error.response.data.error_description || error.response.data.error || "Login failed");
+    }
+    console.error("Login error:", error);
     throw error;
   }
 }
@@ -326,20 +438,18 @@ export async function refreshAccessToken(refreshToken: string): Promise<LiferayT
     refresh_token: refreshToken,
   });
 
-  const response = await fetch(`${BASE_URL}/o/oauth2/token`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Authorization": `Basic ${credentials}`,
-    },
-    body: body.toString(),
-  });
+  const response = await axios.post(
+    `${BASE_URL}/o/oauth2/token`,
+    body.toString(),
+    {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": `Basic ${credentials}`,
+      },
+    }
+  );
 
-  const data = await response.json();
-  
-  if (!response.ok) {
-    throw new Error(data.error_description || data.error);
-  }
+  const data = response.data;
 
   await AsyncStorage.setItem('access_token', data.access_token);
   if (data.refresh_token) {
@@ -364,7 +474,7 @@ export async function getMyUserInfo(): Promise<LiferayUserInfo | null> {
     return null;
   }
 
-  return fetchJSON<LiferayUserInfo>(
+  return axiosRequest<LiferayUserInfo>(
     `${BASE_URL}/o/headless-admin-user/v1.0/my-user-account`,
     token
   );
@@ -382,22 +492,23 @@ export async function getProducts(params: {
   if (!token) throw new Error("User not authenticated");
   if (!CHANNEL_ID) throw new Error("Chưa cấu hình LIFERAY_CHANNEL_ID");
 
-  const qs = new URLSearchParams();
-  qs.set("page", String(params.page ?? 1));
-  qs.set("pageSize", String(params.pageSize ?? 20));
-  qs.set("nestedFields", "skus,productSpecifications,images,categories");
-  qs.set("accept", "application/json"); 
+  const urlParams: any = {
+    page: String(params.page ?? 1),
+    pageSize: String(params.pageSize ?? 20),
+    nestedFields: "skus,productSpecifications,images,categories",
+    accept: "application/json"
+  };
 
-  if (params.search) qs.set("search", params.search);
-  if (params.sort) qs.set("sort", params.sort);
+  if (params.search) urlParams.search = params.search;
+  if (params.sort) urlParams.sort = params.sort;
   if (params.categoryId) {
-    qs.set("filter", `categories/id eq ${params.categoryId}`);
+    urlParams.filter = `categories/id eq ${params.categoryId}`;
   }
 
-  const url = `${BASE_URL}/o/headless-commerce-delivery-catalog/v1.0/channels/${CHANNEL_ID}/products?${qs.toString()}`;
+  const url = `${BASE_URL}/o/headless-commerce-delivery-catalog/v1.0/channels/${CHANNEL_ID}/products`;
   
   console.log("Product URL:", url);
-  return fetchJSON<LiferayProductList>(url, token);
+  return axiosRequest<LiferayProductList>(url, token, { params: urlParams });
 }
 
 // ─── 6. Get product detail ───────────────────────────────────────────────────
@@ -406,8 +517,12 @@ export async function getProduct(productId: number): Promise<LiferayCatalogProdu
   if (!token) throw new Error("User not authenticated");
   if (!CHANNEL_ID) throw new Error("Chưa cấu hình LIFERAY_CHANNEL_ID");
 
-  const url = `${BASE_URL}/o/headless-commerce-delivery-catalog/v1.0/channels/${CHANNEL_ID}/products/${productId}?nestedFields=skus,productSpecifications,images,categories`;
-  const data = await fetchJSON<LiferayCatalogProduct>(url, token);
+  const url = `${BASE_URL}/o/headless-commerce-delivery-catalog/v1.0/channels/${CHANNEL_ID}/products/${productId}`;
+  const data = await axiosRequest<LiferayCatalogProduct>(url, token, {
+    params: {
+      nestedFields: "skus,productSpecifications,images,categories"
+    }
+  });
   if (data.images) {
     data.images = data.images.map((img: any) => ({
       ...img,
@@ -423,20 +538,26 @@ export async function getCategories(vocabularyId?: string): Promise<{ items: Lif
   if (!token) throw new Error("User not authenticated");
 
   if (vocabularyId) {
-    const url = `${BASE_URL}/o/headless-admin-taxonomy/v1.0/taxonomy-vocabularies/${vocabularyId}/taxonomy-categories?pageSize=100`;
-    return fetchJSON<{ items: LiferayCategory[] }>(url, token);
+    const url = `${BASE_URL}/o/headless-admin-taxonomy/v1.0/taxonomy-vocabularies/${vocabularyId}/taxonomy-categories`;
+    return axiosRequest<{ items: LiferayCategory[] }>(url, token, {
+      params: { pageSize: 100 }
+    });
   }
 
-  const vocabsUrl = `${BASE_URL}/o/headless-admin-taxonomy/v1.0/sites/${SITE_ID}/taxonomy-vocabularies?pageSize=10`;
-  const vocabs = await fetchJSON<{ items: { id: number; name: string }[] }>(vocabsUrl, token);
+  const vocabsUrl = `${BASE_URL}/o/headless-admin-taxonomy/v1.0/sites/${SITE_ID}/taxonomy-vocabularies`;
+  const vocabs = await axiosRequest<{ items: { id: number; name: string }[] }>(vocabsUrl, token, {
+    params: { pageSize: 10 }
+  });
   
   if (!vocabs.items?.length) {
     return { items: [] };
   }
 
   const firstVocabId = vocabs.items[0].id;
-  const categoriesUrl = `${BASE_URL}/o/headless-admin-taxonomy/v1.0/taxonomy-vocabularies/${firstVocabId}/taxonomy-categories?pageSize=100`;
-  return fetchJSON<{ items: LiferayCategory[] }>(categoriesUrl, token);
+  const categoriesUrl = `${BASE_URL}/o/headless-admin-taxonomy/v1.0/taxonomy-vocabularies/${firstVocabId}/taxonomy-categories`;
+  return axiosRequest<{ items: LiferayCategory[] }>(categoriesUrl, token, {
+    params: { pageSize: 100 }
+  });
 }
 
 // ─── 8. Get structured contents (courses/articles) ───────────────────────────
@@ -445,9 +566,11 @@ export async function getStructuredContents(siteId?: string, pageSize: number = 
   if (!token) throw new Error("User not authenticated");
 
   const targetSiteId = siteId ?? SITE_ID;
-  const url = `${BASE_URL}/o/headless-delivery/v1.0/sites/${targetSiteId}/structured-contents?pageSize=${pageSize}&page=${page}`;
+  const url = `${BASE_URL}/o/headless-delivery/v1.0/sites/${targetSiteId}/structured-contents`;
   
-  return fetchJSON<any>(url, token);
+  return axiosRequest<any>(url, token, {
+    params: { pageSize, page }
+  });
 }
 
 // ─── 9. Get channels (Commerce Channels) ─────────────────────────────────────
@@ -455,8 +578,10 @@ export async function getChannels() {
   const token = await getUserToken();
   if (!token) throw new Error("User not authenticated");
 
-  const url = `${BASE_URL}/o/headless-commerce-admin-catalog/v1.0/channels?pageSize=100`;
-  return fetchJSON<{ items: { id: number; name: string }[] }>(url, token);
+  const url = `${BASE_URL}/o/headless-commerce-admin-catalog/v1.0/channels`;
+  return axiosRequest<{ items: { id: number; name: string }[] }>(url, token, {
+    params: { pageSize: 100 }
+  });
 }
 
 // ─── 10. Get catalog information ─────────────────────────────────────────────
@@ -464,8 +589,10 @@ export async function getCatalogs() {
   const token = await getUserToken();
   if (!token) throw new Error("User not authenticated");
 
-  const url = `${BASE_URL}/o/headless-commerce-admin-catalog/v1.0/catalogs?pageSize=100`;
-  return fetchJSON<{ items: { id: number; name: string }[] }>(url, token);
+  const url = `${BASE_URL}/o/headless-commerce-admin-catalog/v1.0/catalogs`;
+  return axiosRequest<{ items: { id: number; name: string }[] }>(url, token, {
+    params: { pageSize: 100 }
+  });
 }
 
 // ─── Shortcut helpers ────────────────────────────────────────────────────────
@@ -487,5 +614,140 @@ export async function isAuthenticated(): Promise<boolean> {
     return userInfo !== null;
   } catch {
     return false;
+  }
+}
+
+// ─── Cart Management ──────────────────────────────────────────────────────────
+const CART_STORAGE_KEY = 'liferay_cart_id';
+
+export async function getSavedCartId(): Promise<number | null> {
+  try {
+    const cartId = await AsyncStorage.getItem(CART_STORAGE_KEY);
+    return cartId ? parseInt(cartId, 10) : null;
+  } catch (error) {
+    console.error('Error getting saved cart ID:', error);
+    return null;
+  }
+}
+
+async function saveCartId(cartId: number): Promise<void> {
+  try {
+    await AsyncStorage.setItem(CART_STORAGE_KEY, String(cartId));
+    console.log(`✅ Cart ID ${cartId} saved`);
+  } catch (error) {
+    console.error('Error saving cart ID:', error);
+  }
+}
+
+
+// ======================== HÀM HỖ TRỢ TẠO ACCOUNT ========================
+export async function ensureUserAccount(): Promise<number | null> {
+  try {
+    const userToken = await getUserToken();
+    if (!userToken) return null;
+
+    const userInfo = await getMyUserInfo();
+    if (!userInfo) return null;
+
+    if (userInfo.accountBriefs?.length) {
+      return userInfo.accountBriefs[0].id;
+    }
+
+    const clientToken = await getClientToken();
+    if (!clientToken) throw new Error("No client token");
+
+    const createRes = await axios.post(
+      `${BASE_URL}/o/headless-admin-user/v1.0/accounts`,
+      {
+        name: userInfo.alternateName || userInfo.emailAddress,
+        type: "person",
+      },
+      { headers: { Authorization: `Bearer ${clientToken}` } }
+    );
+
+    const accountId = createRes.data?.id;
+    if (!accountId) throw new Error("No accountId");
+
+    console.log(`Account created: ${accountId}`);
+
+    await axios.post(
+      `${BASE_URL}/o/headless-admin-user/v1.0/accounts/${accountId}/user-accounts/by-email-address`,
+      [userInfo.emailAddress],
+      {
+        headers: {
+          Authorization: `Bearer ${clientToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    return accountId;
+  } catch (error: any) {
+    console.error("Error in ensureUserAccount:", error.response?.data || error.message);
+    return null;
+  }
+}
+
+/**
+ * Tìm hoặc tạo cart cho account
+ */
+export async function findOrCreateCart(): Promise<number | null> {
+  try {
+    const token = await getUserToken();
+    if (!token) return null;
+
+    // 1. Kiểm tra cart đã lưu trong storage
+    const savedCartId = await getSavedCartId();
+    if (savedCartId) {
+      try {
+        const checkRes = await axios.get(
+          `${BASE_URL}/o/headless-commerce-delivery-cart/v1.0/carts/${savedCartId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (checkRes.data?.id) {
+          console.log(`✅ Dùng lại cart cũ: ${savedCartId}`);
+          return savedCartId;
+        }
+      } catch {
+        console.log(`⚠️ Cart cũ không hợp lệ, sẽ tạo mới`);
+        await AsyncStorage.removeItem(CART_STORAGE_KEY);
+      }
+    }
+
+    // 2. Đảm bảo có accountId
+    const accountId = await ensureUserAccount();
+    if (!accountId) {
+      console.error("❌ Không có accountId, không thể tạo cart");
+      return null;
+    }
+
+    // 3. Tạo cart mới (đúng spec: POST /channels/{channelId}/carts)
+    console.log(`🛒 Tạo cart mới cho accountId = ${accountId}, channel = ${CHANNEL_ID}`);
+    const cartBody = { currencyCode: "VND", accountId, channelId: parseInt(CHANNEL_ID, 10) };
+    const cartRes = await axios.post(
+      `${BASE_URL}/o/headless-commerce-delivery-cart/v1.0/channels/${CHANNEL_ID}/carts`,
+      cartBody,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const newCartId = cartRes.data?.id;
+    if (!newCartId) throw new Error("Cart response missing id");
+
+    await AsyncStorage.setItem(CART_STORAGE_KEY, String(newCartId));
+    console.log(`✅ Tạo cart thành công: ${newCartId}`);
+    return newCartId;
+  } catch (error: any) {
+    // Ghi log chi tiết để debug
+    console.error("❌ findOrCreateCart thất bại:", {
+      status: error.response?.status,
+      data: error.response?.data,
+      url: error.config?.url,
+      body: error.config?.data,
+    });
+    return null;
   }
 }

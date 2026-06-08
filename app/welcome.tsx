@@ -2,20 +2,19 @@
 import { useTheme } from "@/src/theme";
 import { useRouter } from "expo-router";
 import React from "react";
-import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { AppButton } from "@/src/components/common";
 
 export default function WelcomeScreen() {
-  const { c, radius } = useTheme();
+  const { c, radius, spacing } = useTheme(); // Thêm spacing
   const router = useRouter();
 
   return (
     <View style={[styles.container, { backgroundColor: c.bg }]}>
       {/* Header Logo */}
       <View style={styles.logoContainer}>
-        <View style={styles.logoBox}>
-          <Text style={styles.logoText}>M</Text>
+        <View style={[styles.logoBox, { backgroundColor: c.primaryLight }]}>
+          <Text style={[styles.logoText, { color: c.primary }]}>M</Text>
         </View>
         <Text style={[styles.brandText, { color: c.primary }]}>MEKOEDU</Text>
         <Text style={[styles.subText, { color: c.textSub }]}>
@@ -24,34 +23,33 @@ export default function WelcomeScreen() {
       </View>
 
       {/* Các nút điều hướng */}
-      <View style={styles.buttonContainer}>
-        {/* Nút Đăng nhập */}
-        <TouchableOpacity
-          style={[styles.button, { backgroundColor: c.primary, borderRadius: radius.md }]}
-          onPress={() => router.push("/(auth)/login")}
-        >
-          <Text style={styles.loginText}>Đăng nhập</Text>
-        </TouchableOpacity>
-
-        {/* Nút Đăng ký */}
-        <TouchableOpacity
-          style={[styles.button, styles.registerBtn, { borderColor: c.primary, borderRadius: radius.md }]}
-          onPress={() => router.push("/(auth)/register")}
-        >
-          <Text style={[styles.registerText, { color: c.primary }]}>Đăng ký</Text>
-        </TouchableOpacity>
+      <View style={[styles.buttonContainer, { gap: spacing.md }]}>
+        <AppButton 
+          title="Đăng nhập" 
+          onPress={() => router.push("/(auth)/login")} 
+          variant="primary"
+        />
+        
+        <AppButton 
+          title="Đăng ký" 
+          onPress={() => router.push("/(auth)/register")} 
+          variant="outline"
+        />
       </View>
     </View>
   );
 }
+
+// Import Typography để dùng
+import { Typography } from "@/src/theme";
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 48,
-    paddingHorizontal: 28,
+    paddingVertical: 32, // Giảm từ 48 xuống 32 vì đã có khung viền
+    paddingHorizontal: 24, // Giảm từ 28 xuống 24
   },
   logoContainer: {
     flex: 1,
@@ -61,8 +59,7 @@ const styles = StyleSheet.create({
   logoBox: {
     width: 80,
     height: 80,
-    backgroundColor: "#FFECEF",
-    borderRadius: 16,
+    borderRadius: 20, // Bo góc tròn hơn
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
@@ -70,7 +67,6 @@ const styles = StyleSheet.create({
   logoText: {
     fontSize: 42,
     fontWeight: "900",
-    color: "#EF4444",
   },
   brandText: {
     fontSize: 28,
@@ -86,11 +82,9 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     width: "100%",
-    gap: 12,
   },
   button: {
     width: "100%",
-    height: 48,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -101,10 +95,8 @@ const styles = StyleSheet.create({
   loginText: {
     color: "#FFF",
     fontWeight: "bold",
-    fontSize: 15,
   },
   registerText: {
     fontWeight: "bold",
-    fontSize: 15,
   },
 });

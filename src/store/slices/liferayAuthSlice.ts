@@ -15,6 +15,7 @@ import {
 } from "@/src/services/liferayService";
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import * as SecureStore from "expo-secure-store";
+import { Constants } from "expo-constants";
 
 const KEY_ACCESS  = "liferay_access_token";
 const KEY_REFRESH = "liferay_refresh_token";
@@ -42,12 +43,48 @@ const initialState: LiferayAuthState = {
 /** Khôi phục session khi app khởi động */
 export const rehydrateLiferayAuth = createAsyncThunk(
   "liferayAuth/rehydrate",
-  async () => {
-    const accessToken    = await SecureStore.getItemAsync(KEY_ACCESS);
-    const storedRefresh  = await SecureStore.getItemAsync(KEY_REFRESH);
-    if (!accessToken) return null;
-    const user = await getMyUserInfo(accessToken).catch(() => null);
-    return { accessToken, refreshToken: storedRefresh, user };
+  async (_, { rejectWithValue }) => {
+    const accessToken = await SecureStore.getItemAsync(KEY_ACCESS);
+    const storedRefresh = await SecureStore.getItemAsync(KEY_REFRESH);
+
+    if (!accessToken) {
+      return null;
+    }
+
+    // Khối TRY lớn nhất bao quát toàn bộ quá trình khôi phục
+    try {
+      try {
+        // Bước 1: Thử lấy thông tin user bằng accessToken hiện tại
+        const user = await getMyUserInfo();
+        return { accessToken, refreshToken: storedRefresh, user };
+      } catch (userError) {
+        console.log("[rehydrate] Token cũ lỗi hoặc hết hạn, thử refresh bằng Refresh Token...");
+        
+        // Bước 2: Nếu token cũ lỗi, kiểm tra xem có refresh token không
+        if (storedRefresh) {
+          const tokens = await refreshAccessToken(storedRefresh);
+          await SecureStore.setItemAsync(KEY_ACCESS, tokens.access_token);
+          await SecureStore.setItemAsync(KEY_REFRESH, tokens.refresh_token);
+
+          // Bước 3: Gọi lại thông tin user bằng token mới vừa lấy
+          const user = await getMyUserInfo();
+          return {
+            accessToken: tokens.access_token,
+            refreshToken: tokens.refresh_token,
+            user
+          };
+        }
+
+        // Nếu token hỏng mà không có cả refresh token -> Ném lỗi ra để nhảy xuống catch lớn xóa session
+        throw new Error("Không có refresh token để gia hạn phiên");
+      }
+    } catch (e) {
+      // Khối catch lớn: Xảy ra khi toàn bộ các bước cứu vớt token phía trên đều thất bại
+      console.error("❌ [rehydrate] Khôi phục session thất bại, tiến hành xóa sạch token:", e);
+      await SecureStore.deleteItemAsync(KEY_ACCESS);
+      await SecureStore.deleteItemAsync(KEY_REFRESH);
+      return null;
+    }
   }
 );
 
@@ -57,13 +94,15 @@ export const liferayLogin = createAsyncThunk(
   async ({ email, password }: { email: string; password: string }, { rejectWithValue }) => {
     try {
       const tokens = await loginUser(email, password);
-      // Tạm thời comment dòng này để test xem lấy Token được chưa đã
-      // const user = await getMyUserInfo(tokens.access_token); 
+      const user = await getMyUserInfo(); 
+
+      await SecureStore.setItemAsync(KEY_ACCESS, tokens.access_token);
+      await SecureStore.setItemAsync(KEY_REFRESH, tokens.refresh_token);
       
       return {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,
-        user: null, // Cho user bằng null để test token trước
+        user: user,
       };
     } catch (e: any) {
       // In thẳng cái e này ra console để nhìn
@@ -185,4 +224,24 @@ const liferayAuthSlice = createSlice({
 
 export const { clearError } = liferayAuthSlice.actions;
 export default liferayAuthSlice.reducer;
+
+// ─── Selectors ────────────────────────────────────────────────────────────────────
+export const selectAccessToken = (state: { liferayAuth: LiferayAuthState }) => state.liferayAuth.accessToken;
+export const selectRefreshToken = (state: { liferayAuth: LiferayAuthState }) => state.liferayAuth.refreshToken;
+export const selectUser = (state: { liferayAuth: LiferayAuthState }) => state.liferayAuth.user;
+export const selectAuthLoading = (state: { liferayAuth: LiferayAuthState }) => state.liferayAuth.loading;
+export const selectAuthError = (state: { liferayAuth: LiferayAuthState }) => state.liferayAuth.error;
+export const selectIsAuthenticated = (state: { liferayAuth: LiferayAuthState }) => !!state.liferayAuth.accessToken;
+
+// Account ID lấy từ user.id
+export const selectAccountId = (state: { liferayAuth: LiferayAuthState }) => {
+  return state.liferayAuth.user?.accountBriefs?.[0]?.id ?? null;
+};
+
+// Channel ID - lấy từ config hoặc từ state riêng (có thể thêm vào slice nếu cần)
+// Hiện tại lấy từ Constants
+export const selectChannelId = () => {
+  const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, string>;
+  return parseInt(extra.LIFERAY_CHANNEL_ID ?? "33290");
+};
 

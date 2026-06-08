@@ -1,128 +1,127 @@
 // src/components/common/AppButton.tsx
+import { useTheme } from "@/src/theme";
+import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { StyleProp, StyleSheet, TextStyle, ViewStyle } from "react-native";
-import { Button as PaperButton } from "react-native-paper";
-
-import { C, Radius, Spacing, Typography } from "@/src/theme";
+import { ActivityIndicator, StyleSheet, Text, TextStyle, TouchableOpacity, ViewStyle } from "react-native";
 
 interface AppButtonProps {
-  title?: string;
-  children?: React.ReactNode;
+  title: string;
   onPress: () => void;
-  mode?: 'contained' | 'outlined' | 'text';
-  variant?: 'primary' | 'outline' | 'text'; // Thêm variant để dễ dùng
-  loading?: boolean;
+  variant?: "primary" | "secondary" | "outline";
   disabled?: boolean;
-  icon?: string;
-  size?: 'small' | 'medium' | 'large';
-  fullWidth?: boolean;
-  style?: StyleProp<ViewStyle>;
-  textStyle?: StyleProp<TextStyle>;
+  loading?: boolean;
+  icon?: keyof typeof Ionicons.glyphMap;
+  iconPosition?: "left" | "right";
+  style?: ViewStyle;
+  textStyle?: TextStyle;
+  fullWidth?: boolean; // Thêm prop mới
 }
 
 export const AppButton = ({
   title,
-  children,
   onPress,
-  mode,
-  variant = 'primary',
-  loading = false,
+  variant = "primary",
   disabled = false,
+  loading = false,
   icon,
-  size = 'medium',
-  fullWidth = false,
+  iconPosition = "left",
   style,
   textStyle,
+  fullWidth = false, // Mặc định false để có thể đặt 2 button cạnh nhau
 }: AppButtonProps) => {
-  // Map variant sang mode
-  const getMode = () => {
-    if (mode) return mode;
+  const { c, radius } = useTheme();
+
+  const getVariantStyles = (): ViewStyle => {
     switch (variant) {
-      case 'primary':
-        return 'contained';
-      case 'outline':
-        return 'outlined';
-      case 'text':
-        return 'text';
+      case "primary":
+        return {
+          backgroundColor: c.primary,
+          borderWidth: 0,
+        };
+      case "secondary":
+        return {
+          backgroundColor: "transparent",
+          borderWidth: 1.5,
+          borderColor: c.border,
+        };
+      case "outline":
+        return {
+          backgroundColor: "transparent",
+          borderWidth: 1.5,
+          borderColor: c.primary,
+        };
       default:
-        return 'contained';
+        return {
+          backgroundColor: c.primary,
+          borderWidth: 0,
+        };
     }
   };
 
-  // Map size sang height
-  const getHeight = () => {
-    switch (size) {
-      case 'small': return 36;
-      case 'medium': return 44;
-      case 'large': return 52;
-      default: return 44;
+  const getTextColor = (): string => {
+    switch (variant) {
+      case "primary":
+        return "#FFFFFF";
+      case "secondary":
+        return c.text;
+      case "outline":
+        return c.primary;
+      default:
+        return "#FFFFFF";
     }
   };
-
-  // Map size sang font size
-  const getFontSize = () => {
-    switch (size) {
-      case 'small': return 13;
-      case 'medium': return 15;
-      case 'large': return 16;
-      default: return 15;
-    }
-  };
-
-  const finalMode = getMode();
-  const buttonHeight = getHeight();
 
   return (
-    <PaperButton
-      mode={finalMode}
-      onPress={onPress}
-      loading={loading}
-      disabled={disabled}
-      icon={icon}
-      theme={{
-        colors: {
-          primary: C.primary,
-          surfaceDisabled: C.border,
-          onSurfaceDisabled: C.textSub,
-        },
-        roundness: Radius.md / 2,
-      }}
+    <TouchableOpacity
       style={[
         styles.button,
-        { height: buttonHeight },
-        finalMode === 'outlined' && styles.outlinedButton,
+        getVariantStyles(),
+        { borderRadius: radius.xl },
+        disabled && styles.disabled,
         fullWidth && styles.fullWidth,
         style,
       ]}
-      labelStyle={[
-        styles.label,
-        { fontSize: getFontSize() },
-        textStyle
-      ]}
-      contentStyle={!title && !children ? { padding: 0 } : undefined}
+      onPress={onPress}
+      disabled={disabled || loading}
+      activeOpacity={0.85}
     >
-      {children || title}
-    </PaperButton>
+      {loading ? (
+        <ActivityIndicator color={getTextColor()} size="small" />
+      ) : (
+        <>
+          {icon && iconPosition === "left" && (
+            <Ionicons name={icon} size={20} color={getTextColor()} />
+          )}
+          <Text style={[styles.text, { color: getTextColor() }, textStyle]}>
+            {title}
+          </Text>
+          {icon && iconPosition === "right" && (
+            <Ionicons name={icon} size={20} color={getTextColor()} />
+          )}
+        </>
+      )}
+    </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
   button: {
-    marginVertical: Spacing.xs,
-    justifyContent: 'center',
-    minWidth: 0,
-    borderRadius: Radius.md,
-  },
-  outlinedButton: {
-    borderColor: C.primary,
-    borderWidth: 1,
-    backgroundColor: 'transparent',
+    height: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 24,
   },
   fullWidth: {
-    width: '100%',
+    flex: 1,
   },
-  label: {
-    ...Typography.variants.button,
-    fontWeight: '600',
+  disabled: {
+    opacity: 0.6,
+  },
+  text: {
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
 });
