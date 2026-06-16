@@ -1,6 +1,7 @@
 // app/welcome.tsx
 import { useTheme } from "@/src/theme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useEffect } from "react";
 import {
@@ -12,6 +13,9 @@ import {
 } from "react-native";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+const LOGO_URL =
+  "http://192.168.1.216:8080/documents/20117/0/logo-do.png/251abcb6-32dc-95f6-29ab-bbed446cf9d7?version=1.0&t=1781164301789";
 
 export default function WelcomeScreen() {
   const { c, radius } = useTheme();
@@ -39,12 +43,17 @@ export default function WelcomeScreen() {
     <View style={[styles.container, { backgroundColor: c.bg }]}>
       {/* Header Logo */}
       <View style={styles.logoContainer}>
-        <View style={styles.logoBox}>
-          <Text style={styles.logoText}>M</Text>
+        <View style={styles.logoCard}>
+          <Image
+            source={{ uri: LOGO_URL }}
+            style={styles.logoImage}
+            contentFit="contain"
+            transition={200}
+          />
         </View>
-        <Text style={[styles.brandText, { color: c.primary }]}>MEKOEDU</Text>
+
         <Text style={[styles.subText, { color: c.textSub }]}>
-          Nền tảng học tập & thi trực tuyến hàng đầu
+          Meko Store - Mua sắm khóa học trực tuyến
         </Text>
       </View>
 
@@ -140,5 +149,13 @@ const styles = StyleSheet.create({
   registerText: {
     fontWeight: "bold",
     fontSize: 15,
+  },
+  logoCard: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logoImage: {
+    width: 280,
+    height: 100,
   },
 });

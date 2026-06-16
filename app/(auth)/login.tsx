@@ -1,14 +1,15 @@
 /**
  * app/(auth)/login.tsx
- * Màn hình đăng nhập – gọi Liferay OAuth2 Resource Owner Password Grant
- * thông qua loginUser service.
  */
 
-import { loginUser } from "@/src/services/liferayService";
-import type { AppDispatch, RootState } from "@/src/store";
+import { loginSchema } from "@/src/schema/schema";
+import authService from "@/src/services/authService";
 import { useTheme } from "@/src/theme";
+import { yupResolver } from "@hookform/resolvers/yup";
+import { Image } from "expo-image";
 import { Link, router } from "expo-router";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
+import { Controller, useForm } from "react-hook-form";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -20,48 +21,50 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useDispatch, useSelector } from "react-redux";
+import { showToast } from "../_layout";
+
+const LOGO_URL =
+  "http://192.168.1.216:8080/documents/20117/0/logo-do.png/251abcb6-32dc-95f6-29ab-bbed446cf9d7?version=1.0&t=1781164301789";
+
+interface LoginFormData {
+  email: string;
+  password: string;
+}
 
 export default function LoginScreen() {
-  const dispatch = useDispatch<AppDispatch>();
-  const { loading, error } = useSelector((s: RootState) => s.liferayAuth);
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
-  // useEffect(() => {
-  //   const checkLogin = async () => {
-  //     const token = await AsyncStorage.getItem("access_token");
-
-  //     if (token) {
-  //       router.replace("/(tabs)/home");
-  //     }
-  //   };
-
-  //   checkLogin();
-  // }, []);
-
-  // Ref để chuyển focus mượt mà từ Email sang Mật khẩu
   const passwordInputRef = useRef<TextInput>(null);
 
-  const handleLogin = async () => {
+  const {
+    control,
+    handleSubmit,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginFormData>({
+    resolver: yupResolver(loginSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+    },
+  });
+
+  const handleLogin = async (data: LoginFormData) => {
     try {
-      console.log("Email state:", email);
-      console.log("Password state:", password);
+      await authService.login({
+        username: data.email,
+        password: data.password,
+      });
 
-      if (!email || !password) {
-        console.error("Email or password is empty");
-        return;
-      }
-
-      const response = await loginUser(email, password);
-      console.log("Login response:", response);
-
+      showToast("success", "Đăng nhập thành công");
       router.replace("/(tabs)/home");
     } catch (error: any) {
-      console.error("Login error:", error.message);
+      showToast("error", "Đăng nhập thất bại");
+
+      setError("root", {
+        message: error?.message || "Đăng nhập thất bại",
+      });
     }
   };
 
@@ -75,76 +78,97 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Logo */}
-        <View style={styles.logoWrap}>
-          <View style={styles.logoDot}>
-            <Text style={styles.logoLetter}>M</Text>
-          </View>
-          <Text style={styles.logoText}>MekoEdu</Text>
+        <View style={styles.logoCard}>
+          <Image
+            source={{ uri: LOGO_URL }}
+            style={styles.logoImage}
+            contentFit="contain"
+            transition={200}
+          />
         </View>
 
         <Text style={styles.title}>Chào mừng trở lại</Text>
-        <Text style={styles.sub}>Đăng nhập vào tài khoản Liferay của bạn</Text>
+        <Text style={styles.sub}>Đăng nhập vào tài khoản của bạn</Text>
 
-        {/* Error */}
-        {error ? (
+        {errors.root?.message ? (
           <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
+            <Text style={styles.errorText}>{errors.root.message}</Text>
           </View>
         ) : null}
 
-        {/* Email */}
         <View style={styles.field}>
           <Text style={styles.label}>Email</Text>
-          <TextInput
-            style={styles.input}
-            value={email}
-            onChangeText={setEmail}
-            placeholder="ten@example.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoComplete="email"
-            returnKeyType="next"
-            blurOnSubmit={false}
-            onSubmitEditing={() => passwordInputRef.current?.focus()}
-            placeholderTextColor={theme.c.textSub}
+
+          <Controller
+            control={control}
+            name="email"
+            render={({ field: { value, onChange, onBlur } }) => (
+              <TextInput
+                style={[styles.input, errors.email && styles.inputError]}
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                placeholder="ten@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
+                returnKeyType="next"
+                blurOnSubmit={false}
+                onSubmitEditing={() => passwordInputRef.current?.focus()}
+                placeholderTextColor={theme.c.textSub}
+              />
+            )}
           />
+
+          {errors.email?.message ? (
+            <Text style={styles.fieldError}>{errors.email.message}</Text>
+          ) : null}
         </View>
 
-        {/* Password */}
         <View style={styles.field}>
           <Text style={styles.label}>Mật khẩu</Text>
-          <TextInput
-            ref={passwordInputRef}
-            style={styles.input}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="••••••••"
-            secureTextEntry={true} // Giữ nguyên mặc định để hệ thống tự render 1 con mắt duy nhất
-            autoComplete="password"
-            returnKeyType="done"
-            onSubmitEditing={handleLogin}
-            placeholderTextColor={theme.c.textSub}
+
+          <Controller
+            control={control}
+            name="password"
+            render={({ field: { value, onChange, onBlur } }) => (
+              <TextInput
+                ref={passwordInputRef}
+                style={[styles.input, errors.password && styles.inputError]}
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                placeholder="••••••••"
+                secureTextEntry
+                autoComplete="password"
+                returnKeyType="done"
+                onSubmitEditing={handleSubmit(handleLogin)}
+                placeholderTextColor={theme.c.textSub}
+              />
+            )}
           />
+
+          {errors.password?.message ? (
+            <Text style={styles.fieldError}>{errors.password.message}</Text>
+          ) : null}
         </View>
 
-        {/* Submit */}
         <TouchableOpacity
-          style={[styles.btnPrimary, loading && styles.btnDisabled]}
-          onPress={handleLogin}
-          disabled={loading}
+          style={[styles.btnPrimary, isSubmitting && styles.btnDisabled]}
+          onPress={handleSubmit(handleLogin)}
+          disabled={isSubmitting}
           activeOpacity={0.85}
         >
-          {loading ? (
-            <ActivityIndicator color={theme.c.bg} size="small" />
+          {isSubmitting ? (
+            <ActivityIndicator color="#fff" size="small" />
           ) : (
             <Text style={styles.btnText}>Đăng nhập</Text>
           )}
         </TouchableOpacity>
 
-        {/* Register link */}
         <View style={styles.switchRow}>
           <Text style={styles.switchText}>Chưa có tài khoản? </Text>
+
           <Link href="/(auth)/register" asChild>
             <TouchableOpacity activeOpacity={0.7}>
               <Text style={styles.switchLink}>Đăng ký ngay</Text>
@@ -156,7 +180,6 @@ export default function LoginScreen() {
   );
 }
 
-// Style động theo theme
 const createStyles = (theme: ReturnType<typeof useTheme>) => {
   const inputShadow = Platform.select({
     ios: {
@@ -175,7 +198,7 @@ const createStyles = (theme: ReturnType<typeof useTheme>) => {
     ios: {
       shadowColor: theme.c.primary,
       shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.15,
+      shadowOpacity: 0.18,
       shadowRadius: 6,
     },
     android: {
@@ -195,50 +218,21 @@ const createStyles = (theme: ReturnType<typeof useTheme>) => {
       paddingHorizontal: theme.spacing[6],
       paddingVertical: theme.spacing[8],
     },
-    logoWrap: {
-      flexDirection: "row",
+    logoCard: {
       alignItems: "center",
       justifyContent: "center",
-      marginBottom: theme.spacing[5],
-      gap: theme.spacing[3],
+      marginBottom: theme.spacing[0],
     },
-    logoDot: {
-      width: 46,
-      height: 46,
-      borderRadius: theme.radius.xl,
-      backgroundColor: theme.c.primary,
-      alignItems: "center",
-      justifyContent: "center",
-      ...Platform.select({
-        ios: {
-          shadowColor: theme.c.primary,
-          shadowOffset: { width: 0, height: 3 },
-          shadowOpacity: 0.25,
-          shadowRadius: 4,
-        },
-        android: {
-          elevation: 4,
-        },
-      }),
-    },
-    logoLetter: {
-      color: "#fff",
-      fontSize: 22,
-      fontWeight: "700",
-    },
-    logoText: {
-      fontSize: 26,
-      fontWeight: "800",
-      color: theme.colors.primary[600],
-      letterSpacing: -0.5,
+    logoImage: {
+      width: 280,
+      height: 100,
     },
     title: {
-      fontSize: 26,
-      fontWeight: "700",
+      fontSize: 28,
+      fontWeight: "800",
       color: theme.c.text,
       textAlign: "center",
       marginBottom: theme.spacing[2],
-      letterSpacing: -0.3,
     },
     sub: {
       fontSize: theme.typography.sizes.sm,
@@ -259,7 +253,6 @@ const createStyles = (theme: ReturnType<typeof useTheme>) => {
       color: theme.colors.error,
       fontSize: theme.typography.sizes.sm,
       fontWeight: "500",
-      lineHeight: 18,
     },
     field: {
       marginBottom: theme.spacing[4],
@@ -278,15 +271,24 @@ const createStyles = (theme: ReturnType<typeof useTheme>) => {
       borderWidth: 1,
       borderColor: theme.c.border,
       paddingHorizontal: theme.spacing.component.inputPadding,
-      height: 50,
+      height: 52,
       fontSize: theme.typography.sizes.md,
       color: theme.c.text,
       ...inputShadow,
     },
+    inputError: {
+      borderColor: theme.colors.error,
+    },
+    fieldError: {
+      color: theme.colors.error,
+      fontSize: 12,
+      marginTop: 6,
+      fontWeight: "500",
+    },
     btnPrimary: {
       backgroundColor: theme.c.primary,
       borderRadius: theme.radius.xl,
-      height: 52,
+      height: 54,
       alignItems: "center",
       justifyContent: "center",
       marginTop: theme.spacing[4],
@@ -300,13 +302,11 @@ const createStyles = (theme: ReturnType<typeof useTheme>) => {
       color: "#fff",
       fontSize: theme.typography.sizes.md,
       fontWeight: "700",
-      letterSpacing: 0.3,
     },
     switchRow: {
       flexDirection: "row",
       justifyContent: "center",
       alignItems: "center",
-      paddingVertical: theme.spacing[2],
     },
     switchText: {
       fontSize: theme.typography.sizes.sm,

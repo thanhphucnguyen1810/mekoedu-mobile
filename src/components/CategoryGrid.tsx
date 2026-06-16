@@ -12,10 +12,15 @@ import {
 import categoriesService from "../services/categoriesService";
 import { AppText } from "./common/AppText";
 
-interface CategoryItem {
+export interface CategoryItem {
   id: number;
   name: string;
 }
+
+const getCategoryInitial = (name?: string) => {
+  if (!name) return "?";
+  return name.trim().charAt(0).toUpperCase();
+};
 
 const CategoryGrid = () => {
   const router = useRouter();
@@ -42,14 +47,14 @@ const CategoryGrid = () => {
     loadCategories();
   }, []);
 
-  const handleCategoryPress = (category: CategoryItem) => {
-    // router.push({
-    //   pathname: "/category/[id]",
-    //   params: {
-    //     id: String(category.id),
-    //     name: category.name,
-    //   },
-    // });
+  const goToCategory = (category: CategoryItem) => {
+    router.push({
+      pathname: "/courses",
+      params: {
+        id: String(category.id),
+        name: category.name,
+      },
+    });
   };
 
   const handleCategoriesPress = () => {
@@ -81,30 +86,27 @@ const CategoryGrid = () => {
           >
             <View
               style={[
-                styles.tile,
+                styles.allTile,
                 {
-                  backgroundColor: c.bgSoft,
-                  borderColor: c.border,
+                  backgroundColor: c.primary,
+                  borderColor: c.primary,
                 },
               ]}
             >
-              <MaterialCommunityIcons
-                name="shape-outline"
-                size={28}
-                color={c.text}
-              />
+              <MaterialCommunityIcons name="apps" size={30} color="#FFFFFF" />
             </View>
 
             <AppText
               style={[
                 styles.tileLabel,
                 {
-                  color: c.text,
+                  color: c.primary,
+                  fontWeight: "700",
                 },
               ]}
               numberOfLines={1}
             >
-              Danh mục
+              Tất cả
             </AppText>
           </Pressable>
 
@@ -121,7 +123,7 @@ const CategoryGrid = () => {
             {categories.map((category) => (
               <Pressable
                 key={category.id}
-                onPress={() => handleCategoryPress(category)}
+                onPress={() => goToCategory(category)}
                 style={({ pressed }) => [
                   styles.tileWrapper,
                   {
@@ -138,11 +140,16 @@ const CategoryGrid = () => {
                     },
                   ]}
                 >
-                  <MaterialCommunityIcons
-                    name="apps"
-                    size={28}
-                    color={c.text}
-                  />
+                  <AppText
+                    style={[
+                      styles.initialText,
+                      {
+                        color: c.primary,
+                      },
+                    ]}
+                  >
+                    {getCategoryInitial(category.name)}
+                  </AppText>
                 </View>
 
                 <AppText
@@ -182,17 +189,31 @@ const styles = StyleSheet.create({
   },
 
   tileWrapper: {
+    width: 66,
+    alignItems: "center",
+  },
+
+  allTile: {
     width: 64,
+    height: 64,
+    borderRadius: 18,
+    borderWidth: 1,
+    justifyContent: "center",
     alignItems: "center",
   },
 
   tile: {
     width: 64,
     height: 64,
-    borderRadius: 10,
+    borderRadius: 18,
     borderWidth: 1,
     justifyContent: "center",
     alignItems: "center",
+  },
+
+  initialText: {
+    fontSize: 24,
+    fontWeight: "800",
   },
 
   tileLabel: {

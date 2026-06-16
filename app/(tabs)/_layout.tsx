@@ -37,7 +37,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="course"
+        name="courses"
         options={{
           title: "Khóa học",
           tabBarIcon: ({ color }) => (

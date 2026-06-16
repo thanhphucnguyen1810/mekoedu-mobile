@@ -1,9 +1,10 @@
+import { CategoryItem } from "@/src/components/CategoryGrid";
 import { AppHeader } from "@/src/components/common";
 import { AppText } from "@/src/components/common/AppText";
-import categoriesService from "@/src/services/categoriesService";
+import categoriesService, { ICategory } from "@/src/services/categoriesService";
 
-import { ICategory } from "@/src/services/category";
 import { useTheme } from "@/src/theme";
+import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -21,6 +22,16 @@ const Categories = () => {
   const [selectedParentId, setSelectedParentId] = useState<number | null>(null);
   const [loadingParent, setLoadingParent] = useState(true);
   const [loadingChild, setLoadingChild] = useState(false);
+
+  const goToCategory = (category: CategoryItem) => {
+    router.push({
+      pathname: "/courses",
+      params: {
+        id: String(category.id),
+        name: category.name,
+      },
+    });
+  };
 
   useEffect(() => {
     const loadParentCategories = async () => {
@@ -136,6 +147,9 @@ const Categories = () => {
                         backgroundColor: c.bgSoft,
                       },
                     ]}
+                    onPress={() => {
+                      goToCategory(category);
+                    }}
                   >
                     <AppText
                       style={[styles.childText, { color: c.text }]}

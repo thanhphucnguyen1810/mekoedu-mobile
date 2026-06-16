@@ -4,10 +4,9 @@ import { FeaturedCoursesList } from "./FeaturedCoursesList";
 
 export const HOME_DATA = {
   banners: [
-    "https://www.robins.vn/wp-content/uploads/2026/01/hinh-anh-con-meo-cute-1.jpg.jpg",
-    "https://cdn2.fptshop.com.vn/unsafe/800x0/Anh_meo_cute_5_dcca1e6fa8.jpg",
-    "https://cdn2.fptshop.com.vn/unsafe/800x0/Anh_meo_cute_20_9322b13411.jpg",
-    "https://cdn2.fptshop.com.vn/unsafe/800x0/Anh_meo_cute_22_05747dec46.jpg",
+    "http://192.168.1.216:8080/documents/20117/0/Gemini_Generated_Image_vl3d8svl3d8svl3d.png/bb4ddc81-0b3c-ad10-0a68-eea19ab97676?version=1.0&t=1781153697038",
+    "http://192.168.1.216:8080/documents/20117/0/Gemini_Generated_Image_vl3d8svl3d8svl3d.png/bb4ddc81-0b3c-ad10-0a68-eea19ab97676?version=1.0&t=1781153697038",
+    "http://192.168.1.216:8080/documents/20117/0/Gemini_Generated_Image_vl3d8svl3d8svl3d.png/bb4ddc81-0b3c-ad10-0a68-eea19ab97676?version=1.0&t=1781153697038",
   ],
 };
 

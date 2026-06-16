@@ -1,60 +1,69 @@
+// src/services/api.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import axios from "axios";
+import axios, { InternalAxiosRequestConfig } from "axios";
 import { ENV } from "../types/env";
-import {
-  ACCESS_TOKEN_KEY,
-  getRefreshToken,
-  REFRESH_TOKEN_KEY,
-  refreshAccessToken,
-} from "./tokenService";
+import storeConfigService from "./storeConfigService";
 
-// URL Liferay (Lưu ý: Thay IP 10.0.2.2 cho Android)
+const ACCESS_TOKEN_KEY = "access_token";
+
+interface RetryConfig extends InternalAxiosRequestConfig {
+  _retry?: boolean;
+}
 
 export const api = axios.create({
-  baseURL: ENV.API_URL,
   headers: {
     "Content-Type": "application/json",
     Accept: "application/json",
   },
 });
 
-// Interceptor để tự động gắn Token
-api.interceptors.request.use(async (config) => {
-  const token = await AsyncStorage.getItem(ACCESS_TOKEN_KEY);
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+api.interceptors.request.use(
+  async (config: InternalAxiosRequestConfig) => {
+    const storeConfig = await storeConfigService.getStoreConfig();
 
-api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      try {
-        const refreshToken = await getRefreshToken();
-        if (!refreshToken) {
-          throw new Error("No refresh token");
-        }
-        const newToken = await refreshAccessToken(refreshToken);
-        const { access_token, refresh_token } = newToken;
-        console.log("new Token", access_token);
-        await AsyncStorage.setItem(ACCESS_TOKEN_KEY, access_token);
+    config.baseURL = storeConfig.apiBaseUrl || ENV.API_URL;
 
-        if (refresh_token) {
-          await AsyncStorage.setItem(REFRESH_TOKEN_KEY, refresh_token);
-        }
-        originalRequest.headers.Authorization = `Bearer ${access_token}`;
-        return api(originalRequest);
-      } catch (refreshError) {
-        await AsyncStorage.multiRemove([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY]);
+    const token = await AsyncStorage.getItem(ACCESS_TOKEN_KEY);
 
-        return Promise.reject(refreshError);
-      }
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    config.headers["Accept-Language"] = "vi-VN";
+
+    console.log(
+      "[API]",
+      config.method?.toUpperCase(),
+      config.baseURL,
+      config.url,
+    );
+
+    return config;
+  },
+  (error) => Promise.reject(error),
+);
+
+api.interceptors.request.use(
+  async (config: InternalAxiosRequestConfig) => {
+    const storeConfig = await storeConfigService.getStoreConfig();
+
+    const baseUrl = (storeConfig.apiBaseUrl || ENV.API_URL).replace(/\/+$/, "");
+    config.baseURL = baseUrl;
+
+    const token = await AsyncStorage.getItem(ACCESS_TOKEN_KEY);
+
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
 
-    return Promise.reject(error);
+    console.log(
+      "[API]",
+      config.method?.toUpperCase(),
+      config.baseURL,
+      config.url,
+      config.params ?? "",
+    );
+
+    return config;
   },
+  (error) => Promise.reject(error),
 );

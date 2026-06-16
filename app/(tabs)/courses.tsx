@@ -1,13 +1,12 @@
 import { AppHeader } from "@/src/components/common";
 import { AppText } from "@/src/components/common/AppText";
 import ProductCard from "@/src/components/ProductCard";
-import categoriesService from "@/src/services/categoriesService";
-import { ICategory } from "@/src/services/category";
+import categoriesService, { ICategory } from "@/src/services/categoriesService";
 import productService, { IProduct } from "@/src/services/productService";
 import { useTheme } from "@/src/theme";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -19,8 +18,15 @@ import {
 
 const BORDER_RADIUS = 5;
 
-const CoursesNew = () => {
+const Courses = () => {
   const { c, spacing } = useTheme();
+  const params = useLocalSearchParams<{ id?: string }>();
+
+  // Ép kiểu ID từ router về Number một cách an toàn
+  const routeCategoryId = useMemo(() => {
+    const id = Array.isArray(params.id) ? params.id[0] : params.id;
+    return id ? Number(id) : null;
+  }, [params.id]);
 
   const [products, setProducts] = useState<IProduct[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -28,75 +34,46 @@ const CoursesNew = () => {
   const [parentCategories, setParentCategories] = useState<ICategory[]>([]);
   const [childCategories, setChildCategories] = useState<ICategory[]>([]);
 
-  const [selectedParentId, setSelectedParentId] = useState<number | null>(null);
+  const [openedParentId, setOpenedParentId] = useState<number | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
-    null,
+    routeCategoryId,
   );
-  const [selectedChildName, setSelectedChildName] = useState<string | null>(
-    null,
-  );
-  const [selectedChildParentId, setSelectedChildParentId] = useState<
-    number | null
-  >(null);
+
+  // Lưu trữ danh mục con đang được chọn theo ID của danh mục cha tương ứng
+  // Cấu trúc: { [parentId: number]: ICategory }
+  const [selectedChildMap, setSelectedChildMap] = useState<
+    Record<number, ICategory>
+  >({});
 
   const [loading, setLoading] = useState(true);
   const [loadingChild, setLoadingChild] = useState(false);
 
+  // Hàm tải sản phẩm dựa theo ID danh mục và từ khóa tìm kiếm
   const loadProducts = async (
     categoryId?: number | null,
     keyword = searchQuery,
   ) => {
     try {
       setLoading(true);
-
       const data = await productService.getProducts(1, 20, {
         search: keyword.trim() || undefined,
         categoryId: categoryId ?? undefined,
       });
-
-      setProducts(data);
+      setProducts(data ?? []);
     } catch (error) {
       console.log("Lỗi lấy sản phẩm", error);
+      setProducts([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSearchChange = async (text: string) => {
-    setSearchQuery(text);
-
-    await loadProducts(selectedCategoryId, text);
-  };
-
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const categoryRes = await categoriesService.getCategories();
-        setParentCategories(categoryRes);
-
-        await loadProducts();
-      } catch (e) {
-        console.log("Lỗi lấy dữ liệu", e);
-        setLoading(false);
-      }
-    };
-
-    loadData();
-  }, []);
-
-  const handleParentPress = async (category: ICategory) => {
-    if (selectedParentId === category.id) {
-      setSelectedParentId(null);
-      setChildCategories([]);
-      return;
-    }
-
+  // Hàm tải danh mục con tách riêng để tái sử dụng
+  const fetchChildCategories = async (parentId: number) => {
     try {
-      setSelectedParentId(category.id);
       setLoadingChild(true);
-
-      const children = await categoriesService.getCategoriesChild(category.id);
-      setChildCategories(children);
+      const children = await categoriesService.getCategoriesChild(parentId);
+      setChildCategories(children ?? []);
     } catch (error) {
       console.log("Lỗi lấy danh mục con", error);
       setChildCategories([]);
@@ -105,34 +82,101 @@ const CoursesNew = () => {
     }
   };
 
-  const handleSelectAll = async () => {
-    setSelectedParentId(null);
-    setSelectedCategoryId(null);
-    setSelectedChildName(null);
-    setSelectedChildParentId(null);
+  // 1. Chỉ lấy danh mục cha MỘT LẦN DUY NHẤT khi component được khởi tạo
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const categoryRes = await categoriesService.getCategories();
+        setParentCategories(categoryRes ?? []);
+      } catch (error) {
+        console.log("Lỗi lấy danh mục", error);
+      }
+    };
+    loadCategories();
+  }, []);
+
+  // 2. Chỉ đồng bộ việc chọn danh mục & tải sản phẩm khi chuyển trang sang (GIỮ ĐÓNG MENU CON)
+  useEffect(() => {
+    setSearchQuery("");
+    setSelectedCategoryId(routeCategoryId);
+    loadProducts(routeCategoryId, "");
+
+    // Không tự động mở menu con, luôn reset về trạng thái đóng khi nhận route mới
+    setOpenedParentId(null);
     setChildCategories([]);
-    await loadProducts(null, searchQuery);
+    setSelectedChildMap({});
+  }, [routeCategoryId]);
+
+  const handleSearchChange = async (text: string) => {
+    setSearchQuery(text);
+    await loadProducts(selectedCategoryId, text);
   };
 
-  const handleSelectChild = async (category: ICategory) => {
-    setSelectedCategoryId(category.id);
-    setSelectedChildName(category.name);
-    setSelectedChildParentId(selectedParentId);
-    setSelectedParentId(null);
+  // 3. Khi nhấn vào danh mục cha
+  const handleParentPress = async (category: ICategory) => {
+    const catId = Number(category.id);
+
+    // NẾU DANH MỤC CHA NÀY ĐÃ CÓ DANH MỤC CON ĐƯỢC CHỌN:
+    // Nhấn vào lần nữa sẽ RESET đổi lại hiển thị danh mục cha ban đầu và lọc theo cha.
+    if (selectedChildMap[catId]) {
+      setSelectedChildMap((prev) => {
+        const updated = { ...prev };
+        delete updated[catId]; // Xóa danh mục con đã chọn khỏi bộ nhớ lưu trữ
+        return updated;
+      });
+
+      setSelectedCategoryId(catId);
+      setOpenedParentId(null);
+      setChildCategories([]);
+      await loadProducts(catId, searchQuery);
+      return;
+    }
+
+    // Luồng xử lý đóng/mở dropdown bình thường khi chưa chọn danh mục con trước đó
+    setSelectedCategoryId(catId);
+    await loadProducts(catId, searchQuery);
+
+    if (openedParentId === catId) {
+      setOpenedParentId(null);
+      setChildCategories([]);
+      return;
+    }
+
+    // Mở dropdown và tải các danh mục con lên
+    setOpenedParentId(catId);
+    await fetchChildCategories(catId);
+  };
+
+  // 4. Khi nhấn nút "Tất cả" -> Reset mọi bộ lọc và text hiển thị
+  const handleSelectAll = async () => {
+    setOpenedParentId(null);
+    setSelectedCategoryId(null);
     setChildCategories([]);
-    await loadProducts(category.id, searchQuery);
+    setSelectedChildMap({});
+    setSearchQuery("");
+    await loadProducts(null, "");
+  };
+
+  // 5. Khi người dùng CHỦ ĐỘNG chọn danh mục con trong dropdown
+  const handleSelectChild = async (childCategory: ICategory) => {
+    const childCatId = Number(childCategory.id);
+
+    if (openedParentId !== null) {
+      // Lưu lại thông tin danh mục con đã chọn tương ứng với danh mục cha hiện tại
+      setSelectedChildMap((prev) => ({
+        ...prev,
+        [openedParentId]: childCategory,
+      }));
+    }
+
+    setSelectedCategoryId(childCatId);
+    setOpenedParentId(null);
+    setChildCategories([]);
+    await loadProducts(childCatId, searchQuery);
   };
 
   const handleProductPress = (product: IProduct) => {
-    router.push(`/course/${product.productId!}`);
-  };
-
-  const handleAddToCart = (product: IProduct) => {
-    console.log("Thêm giỏ hàng:", product.id);
-  };
-
-  const handleBuyNow = (product: IProduct) => {
-    console.log("Mua ngay:", product.id);
+    router.push(`/course/${product.productId ?? product.id}`);
   };
 
   return (
@@ -182,11 +226,23 @@ const CoursesNew = () => {
           </Pressable>
 
           {parentCategories.map((category) => {
-            const isDropdownOpen = selectedParentId === category.id;
-            const hasSelectedChild = selectedChildParentId === category.id;
+            const catId = Number(category.id);
+            const isDropdownOpen = openedParentId === catId;
 
-            const active = isDropdownOpen || hasSelectedChild;
-            const label = hasSelectedChild ? selectedChildName : category.name;
+            // Tìm xem danh mục cha này có danh mục con nào đang được lưu không
+            const selectedChild = selectedChildMap[catId];
+
+            // Trạng thái active sáng màu:
+            // Hoặc là chính ID cha được chọn, hoặc là ID của danh mục con thuộc cha này đang được chọn
+            const active =
+              Number(selectedCategoryId) === catId ||
+              (selectedChild &&
+                Number(selectedCategoryId) === Number(selectedChild.id));
+
+            // Text hiển thị: Nếu có danh mục con được chọn thì hiển thị tên con, ngược lại hiển thị tên cha
+            const displayTitle = selectedChild
+              ? selectedChild.name
+              : category.name;
 
             return (
               <Pressable
@@ -209,7 +265,7 @@ const CoursesNew = () => {
                     },
                   ]}
                 >
-                  {label}
+                  {displayTitle}
                 </AppText>
 
                 <MaterialCommunityIcons
@@ -222,7 +278,7 @@ const CoursesNew = () => {
           })}
         </ScrollView>
 
-        {selectedParentId !== null && (
+        {openedParentId !== null && (
           <View style={[styles.dropdown, { backgroundColor: c.bg }]}>
             {loadingChild ? (
               <View style={styles.dropdownLoading}>
@@ -235,7 +291,8 @@ const CoursesNew = () => {
             ) : (
               <View style={styles.dropdownGrid}>
                 {childCategories.map((category) => {
-                  const active = selectedCategoryId === category.id;
+                  const catId = Number(category.id);
+                  const active = Number(selectedCategoryId) === catId;
 
                   return (
                     <Pressable
@@ -268,11 +325,11 @@ const CoursesNew = () => {
         )}
       </View>
 
-      {selectedParentId !== null && (
+      {openedParentId !== null && (
         <Pressable
           style={styles.overlay}
           onPress={() => {
-            setSelectedParentId(null);
+            setOpenedParentId(null);
             setChildCategories([]);
           }}
         />
@@ -294,13 +351,15 @@ const CoursesNew = () => {
           columnWrapperStyle={{
             gap: spacing.sm,
           }}
+          ListEmptyComponent={
+            <View style={styles.emptyProductBox}>
+              <AppText style={{ color: c.textSub }}>Không có sản phẩm</AppText>
+            </View>
+          }
           renderItem={({ item }) => (
-            <ProductCard
-              item={item}
-              onPress={handleProductPress}
-              onAddToCart={handleAddToCart}
-              onBuyNow={handleBuyNow}
-            />
+            <View style={{ width: "48%" }}>
+              <ProductCard item={item} onPress={handleProductPress} />
+            </View>
           )}
         />
       )}
@@ -308,7 +367,7 @@ const CoursesNew = () => {
   );
 };
 
-export default CoursesNew;
+export default Courses;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -384,6 +443,11 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingVertical: 24,
     fontSize: 14,
+  },
+
+  emptyProductBox: {
+    paddingVertical: 40,
+    alignItems: "center",
   },
 
   overlay: {

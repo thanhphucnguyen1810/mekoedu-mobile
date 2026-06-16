@@ -1,14 +1,14 @@
 import { AppHeader } from "@/src/components/common";
-import {
-  getProduct,
-  LiferayCatalogProduct,
-} from "@/src/services/liferayService";
-import { addToCart } from "@/src/store/slices/cartSlice";
-import { Colors } from "@/src/theme";
+import cartServiceApi from "@/src/services/cartService";
+import productService, { IProduct } from "@/src/services/productService";
+import userService from "@/src/services/userService";
+import { setCartItems } from "@/src/store/slices/cartSlice";
+import { Colors, useTheme } from "@/src/theme";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   ScrollView,
   StyleSheet,
@@ -16,23 +16,35 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDispatch } from "react-redux";
+import { showToast } from "../_layout";
+
+const CHANNEL_ID = 32231;
 
 export default function CourseDetailScreen() {
   const { id } = useLocalSearchParams();
-  const [course, setCourse] = useState<LiferayCatalogProduct | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [quantity, setQuantity] = useState(1);
+  const insets = useSafeAreaInsets();
+  const { c, spacing } = useTheme();
   const dispatch = useDispatch();
+
+  const [course, setCourse] = useState<IProduct | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [addingCart, setAddingCart] = useState(false);
+  const [quantity] = useState(1);
 
   useEffect(() => {
     const loadCourse = async () => {
       try {
         if (!id) return;
-        const data = await getProduct(Number(id));
+
+        const productId = Array.isArray(id) ? id[0] : id;
+        const data = await productService.getProductById(Number(productId));
+
         setCourse(data);
       } catch (error) {
-        console.warn("Failed to load product", error);
+        console.warn("Failed to load product:", error);
+        setCourse(null);
       } finally {
         setLoading(false);
       }
@@ -41,80 +53,220 @@ export default function CourseDetailScreen() {
     loadCourse();
   }, [id]);
 
+  const stripHtml = (html?: string) => {
+    if (!html) return "";
+
+    return html
+      .replace(/<[^>]+>/g, "\n")
+      .replace(/\n\s+/g, "\n")
+      .replace(/\n+/g, "\n")
+      .trim();
+  };
+
+  const handleAddToCart = async () => {
+    if (!course || addingCart) return false;
+
+    try {
+      setAddingCart(true);
+
+      const accountId = await userService.getCurrentAccountId();
+
+      if (!accountId) {
+        Alert.alert("Lỗi", "Không lấy được Account ID");
+        return false;
+      }
+
+      const skuId = course.skus?.[0]?.skuId || course.skus?.[0]?.id;
+
+      if (!skuId) {
+        Alert.alert("Lỗi", "Không lấy được SKU ID của sản phẩm");
+        return false;
+      }
+
+      const cart = await cartServiceApi.getOrCreateCart(accountId, CHANNEL_ID);
+
+      await cartServiceApi.addItemToCart(accountId, CHANNEL_ID, {
+        skuId,
+        quantity: quantity || 1,
+      });
+
+      const itemsData = await cartServiceApi.getCartItems(cart.id);
+
+      dispatch(
+        setCartItems(
+          (itemsData.items ?? []).map((item: any) => ({
+            id: item.id,
+            productId: item.productId || item.product?.id || 0,
+            skuId: item.skuId || item.sku?.id || item.sku?.skuId || 0,
+            quantity: item.quantity ?? 1,
+          })),
+        ),
+      );
+
+      showToast("success", "Thêm sản phẩm vào giỏ hàng thành công");
+      return true;
+    } catch (error: any) {
+      console.warn(
+        "Add to cart failed:",
+        error?.response?.data || error?.message,
+      );
+
+      Alert.alert(
+        "Lỗi",
+        error?.response?.data?.title ||
+          error?.response?.data?.message ||
+          "Không thể thêm vào giỏ hàng",
+      );
+
+      return false;
+    } finally {
+      setAddingCart(false);
+    }
+  };
+
+  const handleBuyNow = async () => {};
+
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={Colors.primary[500]} />
+      <View style={[styles.safeArea, { backgroundColor: c.bg }]}>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={c.primary} />
+        </View>
       </View>
     );
   }
 
   if (!course) {
     return (
-      <View style={styles.center}>
-        <Text>Không tìm thấy khóa học</Text>
+      <View style={[styles.safeArea, { backgroundColor: c.bg }]}>
+        <AppHeader title="Chi tiết khóa học" showBack showCart />
+        <View style={styles.center}>
+          <Text style={[styles.emptyText, { color: c.textSub }]}>
+            Không tìm thấy khóa học
+          </Text>
+        </View>
       </View>
     );
   }
 
-  const imageUrl =
-    course.images?.[0]?.src ||
-    course.images?.[0]?.url ||
-    course.thumbnail ||
-    "https://via.placeholder.com/800x600?text=MekoEdu";
+  console.log(course);
 
-  const sku = course.skus?.[0] as any;
-  const price = sku?.price?.price ?? 0;
-  const promoPrice = sku?.price?.promoPrice;
-  const finalPrice = promoPrice ?? price;
-  const originalPrice = promoPrice ? price : undefined;
+  const imageUrl =
+    course.urlImage || "https://via.placeholder.com/800x600?text=MekoEdu";
+
+  const firstSku = course.skus?.[0];
+
+  const price = firstSku?.price?.price ?? 0;
+  const promoPrice = firstSku?.price?.promoPrice ?? 0;
+
+  const finalPrice = promoPrice > 0 ? promoPrice : price;
+  const originalPrice = promoPrice > 0 ? price : undefined;
+
   const discountPercent =
-    promoPrice && price > 0
+    promoPrice > 0 && price > 0
       ? Math.round(((price - promoPrice) / price) * 100)
       : 0;
 
   const categories =
-    course.categories?.map((c) => c.name).join(", ") ?? "Chưa có danh mục";
-  const specs = course.productSpecifications ?? [];
-  const stripHtml = (html?: string) =>
-    html
-      ? html
-          .replace(/<[^>]+>/g, "\n")
-          .replace(/\n\s+/g, "\n")
-          .trim()
-      : "";
+    course.categories?.map((category) => category.name).join(", ") ||
+    "Chưa có danh mục";
+
+  const specEntries = course.productSpecifications ?? [];
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.safeArea, { backgroundColor: c.bg }]}>
       <AppHeader title="Chi tiết khóa học" showBack showCart />
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.imageSection}>
-          <Image source={{ uri: imageUrl }} style={styles.mainImage} />
+      <ScrollView
+        contentContainerStyle={{
+          padding: spacing.sm,
+          paddingBottom: 112 + insets.bottom,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View
+          style={[
+            styles.imageSection,
+            {
+              marginBottom: spacing.sm,
+              backgroundColor: c.bgSoft,
+            },
+          ]}
+        >
+          <Image
+            source={{ uri: imageUrl }}
+            style={styles.mainImage}
+            resizeMode="cover"
+          />
         </View>
 
-        <View style={styles.infoSection}>
-          <Text style={styles.productTitle}>{course.name}</Text>
+        <View
+          style={[
+            styles.infoSection,
+            {
+              backgroundColor: c.bgSoft,
+              padding: spacing.sm,
+            },
+          ]}
+        >
+          <Text style={[styles.productTitle, { color: c.text }]}>
+            {course.name}
+          </Text>
+
+          {course.shortDescription ? (
+            <Text style={[styles.shortDescription, { color: c.textSub }]}>
+              {stripHtml(course.shortDescription)}
+            </Text>
+          ) : null}
 
           <View style={styles.metaRow}>
-            <Text style={styles.metaLabel}>Danh mục:</Text>
-            <Text style={styles.metaValue}>{categories}</Text>
+            <Text style={[styles.metaLabel, { color: c.textSub }]}>
+              Danh mục:
+            </Text>
+            <Text style={[styles.metaValue, { color: c.text }]}>
+              {categories}
+            </Text>
           </View>
+          {/* 
+          {author ? (
+            <View style={styles.metaRow}>
+              <Text style={[styles.metaLabel, { color: c.textSub }]}>
+                Tác giả:
+              </Text>
+              <Text style={[styles.metaValue, { color: c.text }]}>
+                {author}
+              </Text>
+            </View>
+          ) : null}
+
+          {courseDuration ? (
+            <View style={styles.metaRow}>
+              <Text style={[styles.metaLabel, { color: c.textSub }]}>
+                Thời lượng:
+              </Text>
+              <Text style={[styles.metaValue, { color: c.text }]}>
+                {courseDuration}
+              </Text>
+            </View>
+          ) : null} */}
 
           <View style={styles.priceRow}>
             <View>
-              <Text style={styles.currentPrice}>
+              <Text style={[styles.currentPrice, { color: c.primary }]}>
                 {finalPrice.toLocaleString("vi-VN")} đ
               </Text>
+
               {originalPrice ? (
-                <Text style={styles.oldPrice}>
+                <Text style={[styles.oldPrice, { color: c.textSub }]}>
                   {originalPrice.toLocaleString("vi-VN")} đ
                 </Text>
               ) : null}
             </View>
 
             {discountPercent > 0 ? (
-              <View style={styles.discountBadge}>
+              <View
+                style={[styles.discountBadge, { backgroundColor: c.primary }]}
+              >
                 <Text style={styles.discountBadgeText}>
                   -{discountPercent}%
                 </Text>
@@ -122,158 +274,204 @@ export default function CourseDetailScreen() {
             ) : null}
           </View>
 
-          {promoPrice ? (
-            <Text style={styles.saveText}>
+          {promoPrice > 0 ? (
+            <Text style={[styles.saveText, { color: c.primary }]}>
               Tiết kiệm: {(price - promoPrice).toLocaleString("vi-VN")} đ
             </Text>
           ) : null}
 
-          {/* Product specifications (thông số) - moved above lessons */}
-          <View style={styles.specsCard}>
-            <Text style={styles.sectionTitle}>Thông số khóa học</Text>
-            {specs.length === 0 ? (
-              <Text style={styles.specLine}>Không có thông số</Text>
+          <View
+            style={[
+              styles.specsCard,
+              {
+                backgroundColor: c.bg,
+                padding: spacing.sm,
+                marginTop: spacing.sm,
+                marginBottom: spacing.sm,
+              },
+            ]}
+          >
+            <Text style={[styles.sectionTitle, { color: c.text }]}>
+              Thông số khóa học
+            </Text>
+
+            {specEntries.length === 0 ? (
+              <Text style={[styles.specLine, { color: c.textSub }]}>
+                Không có thông số
+              </Text>
             ) : (
-              specs.map((s: any, idx: number) => (
-                <View key={idx} style={styles.specLineRow}>
-                  <Text style={styles.specName}>
-                    {s.specificationTitle ?? s.specificationKey}:
+              specEntries.map((item) => (
+                <View key={item.key} style={styles.specLineRow}>
+                  <Text style={[styles.specName, { color: c.textSub }]}>
+                    {item.label}:
                   </Text>
-                  <Text style={styles.specValue}>{s.value}</Text>
+
+                  <Text style={[styles.specValue, { color: c.text }]}>
+                    {item.value}
+                  </Text>
                 </View>
               ))
             )}
           </View>
 
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Nội dung bài giảng</Text>
-            {course.shortDescription ? (
-              <Text>{course.shortDescription}</Text>
-            ) : null}
+          <View
+            style={[
+              styles.sectionCard,
+              {
+                backgroundColor: c.bgSoft,
+                borderColor: c.border,
+                padding: spacing.sm,
+                marginBottom: spacing.sm,
+              },
+            ]}
+          >
+            <Text style={[styles.sectionTitle, { color: c.text }]}>
+              Nội dung khóa học
+            </Text>
 
-            {course.description ? (
-              <Text style={[styles.sectionText, { marginBottom: 12 }]}>
-                {stripHtml(course.description)}
-              </Text>
-            ) : null}
-
-            {(() => {
-              const lessonSpecs = specs.filter((s: any) => {
-                const key = (s.specificationKey || "").toLowerCase();
-                const title = (s.specificationTitle || "").toLowerCase();
-                return (
-                  key.includes("bai") ||
-                  key.includes("bài") ||
-                  key.includes("lesson") ||
-                  title.includes("bài") ||
-                  title.includes("chương")
-                );
-              });
-
-              if (lessonSpecs.length > 0) {
-                return lessonSpecs.map((ls: any, i: number) => (
-                  <View key={i} style={styles.lessonRow}>
-                    <Text style={styles.lessonTitle}>
-                      {ls.specificationTitle ?? ls.specificationKey}
-                    </Text>
-                    <Text style={styles.lessonMeta}>{ls.value}</Text>
-                  </View>
-                ));
-              }
-
-              return (
-                <Text style={styles.sectionText}>
-                  Toàn bộ bài giảng được liệt kê trong nội dung khóa học. (Nếu
-                  bạn cần chi tiết, liên hệ nhà cung cấp)
-                </Text>
-              );
-            })()}
-          </View>
-
-          {/* Đánh giá (xuống dưới phần bài giảng) */}
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Đánh giá</Text>
-            <Text style={styles.sectionText}>
-              Chưa có đánh giá cho khóa học này.
+            <Text style={[styles.sectionText, { color: c.textSub }]}>
+              {course.description
+                ? stripHtml(course.description)
+                : "Chưa có mô tả chi tiết cho khóa học này."}
             </Text>
           </View>
 
-          {/* Controls: quantity & buy */}
-          <View style={styles.controlsRow}>
-            <TouchableOpacity
-              style={styles.addCartButton}
-              onPress={() => {
-                try {
-                  dispatch(
-                    addToCart({
-                      id: course.id,
-                      name: course.name,
-                      thumbnail: course.thumbnail || imageUrl,
-                      price: price,
-                      promoPrice: promoPrice ?? undefined,
-                      catalogName: course.catalogName,
-                      quantity: quantity,
-                    }),
-                  );
-                  console.log("Added to cart", course.id, quantity);
-                } catch (e) {
-                  console.warn("Add to cart failed", e);
-                }
-              }}
-            >
-              <Text style={styles.addCartText}>THÊM VÀO GIỎ HÀNG</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.buyNowButton}>
-              <Text style={styles.buyNowText}>MUA NGAY</Text>
-            </TouchableOpacity>
+          <View
+            style={[
+              styles.sectionCard,
+              {
+                backgroundColor: c.bgSoft,
+                borderColor: c.border,
+                padding: spacing.sm,
+                marginBottom: spacing.sm,
+              },
+            ]}
+          >
+            <Text style={[styles.sectionTitle, { color: c.text }]}>
+              Đánh giá
+            </Text>
+            <Text style={[styles.sectionText, { color: c.textSub }]}>
+              Chưa có đánh giá cho khóa học này.
+            </Text>
           </View>
         </View>
       </ScrollView>
+
+      <View
+        style={[
+          styles.bottomBar,
+          {
+            paddingHorizontal: spacing.sm,
+            paddingTop: spacing.sm,
+            paddingBottom: insets.bottom + spacing.sm,
+            borderTopColor: c.border,
+            backgroundColor: c.bg,
+            gap: spacing.sm,
+          },
+        ]}
+      >
+        <TouchableOpacity
+          style={[
+            styles.cartButton,
+            { backgroundColor: c.primary },
+            addingCart && styles.disabledButton,
+          ]}
+          onPress={handleAddToCart}
+          activeOpacity={0.9}
+          disabled={addingCart}
+        >
+          <Text style={styles.cartButtonText}>
+            {addingCart ? "ĐANG THÊM..." : "THÊM VÀO GIỎ"}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.buyButton,
+            {
+              borderColor: c.primary,
+              backgroundColor: c.bg,
+            },
+            addingCart && styles.disabledButton,
+          ]}
+          onPress={handleBuyNow}
+          activeOpacity={0.9}
+          disabled={addingCart}
+        >
+          <Text style={[styles.buyButtonText, { color: c.primary }]}>
+            MUA NGAY
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.background.secondary },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  content: { padding: 16, paddingBottom: 40 },
-  imageSection: {
-    borderRadius: 12,
-    overflow: "hidden",
-    marginBottom: 12,
-    backgroundColor: Colors.neutral[100],
+  safeArea: {
+    flex: 1,
   },
-  mainImage: { width: "100%", height: 260 },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  emptyText: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  imageSection: {
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  mainImage: {
+    width: "100%",
+    height: 240,
+  },
   infoSection: {
-    backgroundColor: Colors.background.primary,
-    borderRadius: 5,
-    padding: 16,
+    borderRadius: 16,
   },
   productTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "800",
-    color: Colors.neutral[900],
     marginBottom: 8,
   },
-  metaRow: { flexDirection: "row", marginBottom: 8 },
-  metaLabel: { color: Colors.neutral[600], width: 80 },
-  metaValue: { color: Colors.neutral[900], fontWeight: "700", fontSize: 14 },
+  shortDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  metaRow: {
+    flexDirection: "row",
+    marginBottom: 8,
+  },
+  metaLabel: {
+    width: 90,
+    fontSize: 14,
+  },
+  metaValue: {
+    flex: 1,
+    fontWeight: "700",
+    fontSize: 14,
+  },
   priceRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginVertical: 8,
+    marginTop: 8,
+    marginBottom: 4,
   },
-  currentPrice: { fontSize: 24, fontWeight: "900", color: Colors.neutral[900] },
+  currentPrice: {
+    fontSize: 24,
+    fontWeight: "900",
+  },
   oldPrice: {
-    color: Colors.neutral[500],
     textDecorationLine: "line-through",
-    marginTop: 6,
+    marginTop: 4,
     fontSize: 14,
   },
   discountBadge: {
-    backgroundColor: Colors.primary[600],
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
@@ -283,90 +481,80 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 14,
   },
-  saveText: { color: Colors.primary[600], marginBottom: 8, fontSize: 14 },
-  promoCard: {
-    backgroundColor: Colors.neutral[50],
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 12,
+  saveText: {
+    marginBottom: 8,
+    fontSize: 14,
+    fontWeight: "600",
   },
-  promoHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 6,
-  },
-  promoHeaderText: { fontWeight: "800", color: Colors.neutral[900] },
-  promoText: { color: Colors.neutral[700], fontSize: 13 },
   specsCard: {
-    backgroundColor: Colors.background.secondary,
-    padding: 12,
     borderRadius: 12,
-    marginBottom: 12,
   },
-  sectionTitle: { fontWeight: "800", marginBottom: 8 },
   sectionCard: {
-    backgroundColor: Colors.background.primary,
-    padding: 12,
     borderRadius: 12,
-    marginBottom: 12,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  sectionText: { color: Colors.neutral[700], fontSize: 14, lineHeight: 20 },
-  specLine: { color: Colors.neutral[600] },
+  sectionTitle: {
+    fontWeight: "800",
+    marginBottom: 8,
+    fontSize: 16,
+  },
+  sectionText: {
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  specLine: {
+    fontSize: 14,
+  },
   specLineRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 6,
+    gap: 12,
+    marginBottom: 8,
   },
-  specName: { color: Colors.neutral[600], width: 120, fontSize: 14 },
-  specValue: { color: Colors.neutral[900], fontWeight: "700", fontSize: 14 },
-  lessonRow: {
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.neutral[200],
+  specName: {
+    width: 120,
+    fontSize: 14,
+    textTransform: "capitalize",
   },
-  lessonTitle: { color: Colors.neutral[900], fontWeight: "700", fontSize: 14 },
-  lessonMeta: { color: Colors.neutral[600], marginTop: 4, fontSize: 14 },
-  qtyValue: { marginHorizontal: 12, fontWeight: "800", fontSize: 14 },
-  controlsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 8,
-  },
-  quantityRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: Colors.neutral[50],
-    padding: 8,
-    borderRadius: 10,
-  },
-  qtyButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: Colors.background.primary,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  qtyButtonText: { fontSize: 18, fontWeight: "800" },
-  addCartButton: {
+  specValue: {
     flex: 1,
-    backgroundColor: Colors.primary[600],
-    height: 52,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
+    fontWeight: "700",
+    fontSize: 14,
+    textAlign: "right",
   },
-  addCartText: { color: Colors.neutral[0], fontWeight: "800" },
-  buyNowButton: {
-    backgroundColor: Colors.primary[600],
-    height: 52,
-    paddingHorizontal: 18,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
+  bottomBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: "row",
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  buyNowText: { color: Colors.neutral[0], fontWeight: "800" },
+  cartButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  buyButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1.5,
+  },
+  disabledButton: {
+    opacity: 0.6,
+  },
+  cartButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  buyButtonText: {
+    fontWeight: "700",
+    fontSize: 14,
+  },
 });

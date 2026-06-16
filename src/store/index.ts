@@ -5,12 +5,13 @@
 
 import { configureStore } from "@reduxjs/toolkit";
 import cartReducer from "./slices/cartSlice";
-import liferayAuthReducer from "./slices/liferayAuthSlice";
+// import liferayAuthReducer from "./slices/liferayAuthSlice";
 import examReducer from "./slices/examSlice"; // bật sau khi tách examSlice
 
 export const store = configureStore({
   reducer: {
-    liferayAuth: liferayAuthReducer,
+    // liferayAuth: liferayAuthReducer,
+
     cart: cartReducer,
     exam: examReducer,
   },

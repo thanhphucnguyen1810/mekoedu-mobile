@@ -1,128 +1,159 @@
-// src/store/slices/cartSlice.ts
-import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+import cartService from "@/src/services/cartService";
+import storeConfigService from "@/src/services/storeConfigService";
+import userService from "@/src/services/userService";
+import type { RootState } from "@/src/store";
+import { createAsyncThunk, createSlice, PayloadAction } from "@reduxjs/toolkit";
+
 export interface CartItem {
-  id: string | number;
-  name: string;
-  thumbnail?: string;
-  /** Giá gốc (VND) */
-  price: number;
-  /** Giá khuyến mãi – 0 hoặc undefined nếu không có */
-  promoPrice?: number;
-  catalogName?: string;
+  id: number | string;
+  productId?: number;
+  skuId?: number;
   quantity: number;
 }
 
 interface CartState {
   items: CartItem[];
-  /** Mã coupon đang áp dụng (để dùng sau) */
-  couponCode: string | null;
+  loading: boolean;
 }
 
-// ─── Initial state ────────────────────────────────────────────────────────────
 const initialState: CartState = {
   items: [],
-  couponCode: null,
+  loading: false,
 };
 
-// ─── Slice ────────────────────────────────────────────────────────────────────
+export const fetchCartItems = createAsyncThunk(
+  "cart/fetchCartItems",
+  async () => {
+    const config = await storeConfigService.getStoreConfig();
+    const accountId = await userService.getCurrentAccountId();
+
+    const cart = await cartService.getOrCreateCart(
+      Number(accountId),
+      Number(config.channelId),
+    );
+
+    const itemsData = await cartService.getCartItems(cart.id);
+    const items = itemsData.items ?? [];
+
+    return items.map((item: any) => ({
+      id: item.id,
+      productId: item.productId,
+      skuId: item.skuId,
+      quantity: Number(item.quantity ?? 1),
+    }));
+  },
+);
+
+const isSameCartItem = (a: CartItem, b: CartItem) => {
+  if (a.skuId && b.skuId) return Number(a.skuId) === Number(b.skuId);
+  if (a.productId && b.productId)
+    return Number(a.productId) === Number(b.productId);
+  return String(a.id) === String(b.id);
+};
+
 const cartSlice = createSlice({
   name: "cart",
   initialState,
   reducers: {
-    /**
-     * Thêm sản phẩm vào giỏ.
-     * Nếu id đã tồn tại → tăng số lượng, không thêm mới.
-     */
-    addToCart(state, action: PayloadAction<Omit<CartItem, "quantity"> & { quantity?: number }>) {
-      const { quantity = 1, ...product } = action.payload;
-      const existing = state.items.find((i) => i.id === product.id);
+    setCartItems(state, action: PayloadAction<CartItem[]>) {
+      state.items = action.payload;
+    },
+
+    addToCart(state, action: PayloadAction<CartItem>) {
+      const item = action.payload;
+      const existing = state.items.find((x) => isSameCartItem(x, item));
+
       if (existing) {
-        existing.quantity += quantity;
+        existing.quantity += Number(item.quantity || 1);
       } else {
-        state.items.push({ ...product, quantity });
+        state.items.push({
+          id: item.id,
+          productId: item.productId,
+          skuId: item.skuId,
+          quantity: Number(item.quantity || 1),
+        });
       }
     },
 
-    /**
-     * Xóa 1 sản phẩm khỏi giỏ theo id.
-     */
-    removeFromCart(state, action: PayloadAction<string | number>) {
-      state.items = state.items.filter((i) => i.id !== action.payload);
-    },
-
-    /**
-     * Cập nhật số lượng của 1 sản phẩm.
-     * Nếu quantity <= 0 → xóa khỏi giỏ.
-     */
-    updateQuantity(
+    updateCartQuantity(
       state,
-      action: PayloadAction<{ id: string | number; quantity: number }>
+      action: PayloadAction<{
+        id?: number | string;
+        productId?: number;
+        skuId?: number;
+        quantity: number;
+      }>,
     ) {
-      const { id, quantity } = action.payload;
-      if (quantity <= 0) {
-        state.items = state.items.filter((i) => i.id !== id);
-      } else {
-        const item = state.items.find((i) => i.id === id);
-        if (item) item.quantity = quantity;
-      }
+      const item = state.items.find((x) =>
+        isSameCartItem(x, {
+          id: action.payload.id ?? "",
+          productId: action.payload.productId,
+          skuId: action.payload.skuId,
+          quantity: action.payload.quantity,
+        }),
+      );
+
+      if (item) item.quantity = Number(action.payload.quantity || 0);
     },
 
-    /**
-     * Xóa toàn bộ giỏ hàng.
-     */
+    removeFromCart(
+      state,
+      action: PayloadAction<{
+        id?: number | string;
+        productId?: number;
+        skuId?: number;
+      }>,
+    ) {
+      state.items = state.items.filter(
+        (x) =>
+          !isSameCartItem(x, {
+            id: action.payload.id ?? "",
+            productId: action.payload.productId,
+            skuId: action.payload.skuId,
+            quantity: 0,
+          }),
+      );
+    },
+
     clearCart(state) {
       state.items = [];
-      state.couponCode = null;
     },
+  },
 
-    /**
-     * Áp dụng / xóa coupon code.
-     */
-    setCouponCode(state, action: PayloadAction<string | null>) {
-      state.couponCode = action.payload;
-    },
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetchCartItems.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(fetchCartItems.fulfilled, (state, action) => {
+        state.loading = false;
+        state.items = action.payload;
+      })
+      .addCase(fetchCartItems.rejected, (state) => {
+        state.loading = false;
+      });
   },
 });
 
 export const {
+  setCartItems,
   addToCart,
+  updateCartQuantity,
   removeFromCart,
-  updateQuantity,
   clearCart,
-  setCouponCode,
 } = cartSlice.actions;
 
-export default cartSlice.reducer;
-
-// ─── Selectors ────────────────────────────────────────────────────────────────
-import type { RootState } from "@/src/store";
-
-/** Tất cả items trong giỏ */
 export const selectCartItems = (state: RootState) => state.cart.items;
 
-/** Tổng số lượng sản phẩm (dùng cho badge icon) */
-export const selectCartCount = (state: RootState) =>
-  state.cart.items.reduce((sum, i) => sum + i.quantity, 0);
+// số sản phẩm khác nhau
+export const selectCartCount = (state: RootState) => state.cart.items.length;
 
-/** Tổng tiền sau khuyến mãi */
-export const selectCartTotal = (state: RootState) =>
-  state.cart.items.reduce((sum, i) => {
-    const price =
-      i.promoPrice && i.promoPrice > 0 && i.promoPrice < i.price
-        ? i.promoPrice
-        : i.price;
-    return sum + price * i.quantity;
-  }, 0);
+// tổng số lượng
+export const selectCartTotalQuantity = (state: RootState) =>
+  state.cart.items.reduce(
+    (total, item) => total + Number(item.quantity || 0),
+    0,
+  );
 
-/** Tiết kiệm được */
-export const selectCartSavings = (state: RootState) =>
-  state.cart.items.reduce((sum, i) => {
-    const saving =
-      i.promoPrice && i.promoPrice > 0 && i.promoPrice < i.price
-        ? (i.price - i.promoPrice) * i.quantity
-        : 0;
-    return sum + saving;
-  }, 0);
-  
+export default cartSlice.reducer;

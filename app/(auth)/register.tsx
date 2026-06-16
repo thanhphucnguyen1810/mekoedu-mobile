@@ -1,15 +1,13 @@
-/**
- * app/(auth)/register.tsx
- */
-
-import type { AppDispatch, RootState } from "@/src/store";
-import { clearError, liferayRegister } from "@/src/store/slices/liferayAuthSlice";
+import { registerSchema } from "@/src/schema/schema";
+import authService from "@/src/services/authService";
 import { useTheme } from "@/src/theme";
-import { Link, router } from "expo-router";
-import React, { useMemo, useRef, useState } from "react";
+import { yupResolver } from "@hookform/resolvers/yup";
+import { Image } from "expo-image";
+import { Link } from "expo-router";
+import { useMemo, useRef, useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -19,67 +17,64 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useDispatch, useSelector } from "react-redux";
+import { showToast } from "../_layout";
+
+type RegisterForm = {
+  familyName: string;
+  givenName: string;
+  email: string;
+  password: string;
+  confirm: string;
+};
+
+const LOGO_URL =
+  "http://192.168.1.216:8080/documents/20117/0/logo-do.png/251abcb6-32dc-95f6-29ab-bbed446cf9d7?version=1.0&t=1781164301789";
 
 export default function RegisterScreen() {
-  const dispatch = useDispatch<AppDispatch>();
-  const { loading, error } = useSelector((s: RootState) => s.liferayAuth);
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
-  // Refs để chuyển focus mượt mà
   const givenNameRef = useRef<TextInput>(null);
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
 
-  const [form, setForm] = useState({
-    givenName: "",
-    familyName: "",
-    email: "",
-    password: "",
-    confirm: "",
+  const [apiError, setApiError] = useState("");
+
+  const {
+    control,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<RegisterForm>({
+    resolver: yupResolver(registerSchema),
+    defaultValues: {
+      familyName: "",
+      givenName: "",
+      email: "",
+      password: "",
+      confirm: "",
+    },
   });
-  const [localErrors, setLocalErrors] = useState<Partial<typeof form>>({});
 
-  const set = (k: keyof typeof form) => (v: string) =>
-    setForm((prev) => ({ ...prev, [k]: v }));
+  const onSubmit = async (data: RegisterForm) => {
+    try {
+      await authService.register({
+        familyName: data.familyName.trim(),
+        givenName: data.givenName.trim(),
+        emailAddress: data.email.trim().toLowerCase(),
+        password: data.password,
+      });
+      reset();
+      showToast("success", "Đăng ký thành công");
+    } catch (error: any) {
+      console.log("Register error:", error.response?.data || error.message);
 
-  const validate = () => {
-    const errs: Partial<typeof form> = {};
-    if (!form.familyName.trim()) errs.familyName = "Vui lòng nhập họ";
-    if (!form.givenName.trim()) errs.givenName = "Vui lòng nhập tên";
-    if (!form.email.includes("@")) errs.email = "Email không hợp lệ";
-    if (form.password.length < 8) {
-      errs.password = "Tối thiểu 8 ký tự";
-    } else if (!/[A-Z]/.test(form.password)) {
-      errs.password = "Cần có ít nhất 1 chữ hoa";
-    } else if (!/[0-9]/.test(form.password)) {
-      errs.password = "Cần có ít nhất 1 chữ số";
-    }
-    if (form.confirm !== form.password) errs.confirm = "Mật khẩu không khớp";
-    setLocalErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
-  const handleRegister = async () => {
-    if (!validate()) return;
-    dispatch(clearError());
-
-    const result = await dispatch(
-      liferayRegister({
-        givenName: form.givenName.trim(),
-        familyName: form.familyName.trim(),
-        emailAddress: form.email.trim(),
-        password: form.password,
-      })
-    );
-
-    if (liferayRegister.fulfilled.match(result)) {
-      Alert.alert(
-        "Thành công! 🎉",
-        "Vui lòng đăng nhập để tiếp tục.",
-        [{ text: "Đăng nhập ngay", onPress: () => router.replace("/(auth)/login") }]
+      setApiError(
+        error.response?.data?.title ||
+          error.response?.data?.message ||
+          error.message ||
+          "Đăng ký thất bại",
       );
     }
   };
@@ -94,114 +89,155 @@ export default function RegisterScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Logo */}
-        <View style={styles.logoWrap}>
-          <View style={styles.logoDot}>
-            <Text style={styles.logoLetter}>M</Text>
-          </View>
-          <Text style={styles.logoText}>MekoEdu</Text>
+        <View style={styles.logoCard}>
+          <Image
+            source={{ uri: LOGO_URL }}
+            style={styles.logoImage}
+            contentFit="contain"
+            transition={200}
+          />
         </View>
 
         <Text style={styles.title}>Tạo tài khoản</Text>
         <Text style={styles.sub}>Đăng ký để bắt đầu hành trình học tập</Text>
 
-        {/* API error */}
-        {error ? (
+        {apiError ? (
           <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
+            <Text style={styles.errorText}>{apiError}</Text>
           </View>
         ) : null}
 
-        {/* Họ + Tên */}
         <View style={styles.row}>
           <View style={[styles.field, { flex: 1.2 }]}>
             <Text style={styles.label}>Họ</Text>
-            <TextInput
-              style={[styles.input, localErrors.familyName && styles.inputErr]}
-              value={form.familyName}
-              onChangeText={set("familyName")}
-              placeholder="Nguyễn"
-              autoCapitalize="words"
-              returnKeyType="next"
-              onSubmitEditing={() => givenNameRef.current?.focus()}
-              blurOnSubmit={false}
-              placeholderTextColor={theme.c.textSub}
+            <Controller
+              control={control}
+              name="familyName"
+              render={({ field: { value, onChange, onBlur } }) => (
+                <TextInput
+                  style={[styles.input, errors.familyName && styles.inputErr]}
+                  value={value}
+                  onChangeText={onChange}
+                  onBlur={onBlur}
+                  placeholder="Nguyễn"
+                  autoCapitalize="words"
+                  returnKeyType="next"
+                  onSubmitEditing={() => givenNameRef.current?.focus()}
+                  blurOnSubmit={false}
+                  placeholderTextColor={theme.c.textSub}
+                />
+              )}
             />
-            {localErrors.familyName && <Text style={styles.errMsg}>{localErrors.familyName}</Text>}
+            {errors.familyName?.message && (
+              <Text style={styles.errMsg}>{errors.familyName.message}</Text>
+            )}
           </View>
+
           <View style={[styles.field, { flex: 1 }]}>
             <Text style={styles.label}>Tên</Text>
-            <TextInput
-              ref={givenNameRef}
-              style={[styles.input, localErrors.givenName && styles.inputErr]}
-              value={form.givenName}
-              onChangeText={set("givenName")}
-              placeholder="An"
-              autoCapitalize="words"
-              returnKeyType="next"
-              onSubmitEditing={() => emailRef.current?.focus()}
-              blurOnSubmit={false}
-              placeholderTextColor={theme.c.textSub}
+            <Controller
+              control={control}
+              name="givenName"
+              render={({ field: { value, onChange, onBlur } }) => (
+                <TextInput
+                  ref={givenNameRef}
+                  style={[styles.input, errors.givenName && styles.inputErr]}
+                  value={value}
+                  onChangeText={onChange}
+                  onBlur={onBlur}
+                  placeholder="An"
+                  autoCapitalize="words"
+                  returnKeyType="next"
+                  onSubmitEditing={() => emailRef.current?.focus()}
+                  blurOnSubmit={false}
+                  placeholderTextColor={theme.c.textSub}
+                />
+              )}
             />
-            {localErrors.givenName && <Text style={styles.errMsg}>{localErrors.givenName}</Text>}
+            {errors.givenName?.message && (
+              <Text style={styles.errMsg}>{errors.givenName.message}</Text>
+            )}
           </View>
         </View>
 
-        {/* Email */}
         <View style={styles.field}>
-          <Text style={styles.label}>Email công việc</Text>
-          <TextInput
-            ref={emailRef}
-            style={[styles.input, localErrors.email && styles.inputErr]}
-            value={form.email}
-            onChangeText={set("email")}
-            placeholder="ten@example.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            returnKeyType="next"
-            onSubmitEditing={() => passwordRef.current?.focus()}
-            blurOnSubmit={false}
-            placeholderTextColor={theme.c.textSub}
+          <Text style={styles.label}>Email</Text>
+          <Controller
+            control={control}
+            name="email"
+            render={({ field: { value, onChange, onBlur } }) => (
+              <TextInput
+                ref={emailRef}
+                style={[styles.input, errors.email && styles.inputErr]}
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                placeholder="ten@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                returnKeyType="next"
+                onSubmitEditing={() => passwordRef.current?.focus()}
+                blurOnSubmit={false}
+                placeholderTextColor={theme.c.textSub}
+              />
+            )}
           />
-          {localErrors.email && <Text style={styles.errMsg}>{localErrors.email}</Text>}
+          {errors.email?.message && (
+            <Text style={styles.errMsg}>{errors.email.message}</Text>
+          )}
         </View>
 
-        {/* Mật khẩu */}
         <View style={styles.field}>
           <Text style={styles.label}>Mật khẩu</Text>
-          <TextInput
-            ref={passwordRef}
-            style={[styles.input, localErrors.password && styles.inputErr]}
-            value={form.password}
-            onChangeText={set("password")}
-            placeholder="••••••••"
-            secureTextEntry
-            returnKeyType="next"
-            onSubmitEditing={() => confirmRef.current?.focus()}
-            blurOnSubmit={false}
-            placeholderTextColor={theme.c.textSub}
+          <Controller
+            control={control}
+            name="password"
+            render={({ field: { value, onChange, onBlur } }) => (
+              <TextInput
+                ref={passwordRef}
+                style={[styles.input, errors.password && styles.inputErr]}
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                placeholder="••••••••"
+                secureTextEntry
+                returnKeyType="next"
+                onSubmitEditing={() => confirmRef.current?.focus()}
+                blurOnSubmit={false}
+                placeholderTextColor={theme.c.textSub}
+              />
+            )}
           />
-          {localErrors.password && <Text style={styles.errMsg}>{localErrors.password}</Text>}
+          {errors.password?.message && (
+            <Text style={styles.errMsg}>{errors.password.message}</Text>
+          )}
         </View>
 
-        {/* Xác nhận mật khẩu */}
         <View style={styles.field}>
           <Text style={styles.label}>Xác nhận mật khẩu</Text>
-          <TextInput
-            ref={confirmRef}
-            style={[styles.input, localErrors.confirm && styles.inputErr]}
-            value={form.confirm}
-            onChangeText={set("confirm")}
-            placeholder="••••••••"
-            secureTextEntry
-            returnKeyType="done"
-            onSubmitEditing={handleRegister}
-            placeholderTextColor={theme.c.textSub}
+          <Controller
+            control={control}
+            name="confirm"
+            render={({ field: { value, onChange, onBlur } }) => (
+              <TextInput
+                ref={confirmRef}
+                style={[styles.input, errors.confirm && styles.inputErr]}
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                placeholder="••••••••"
+                secureTextEntry
+                returnKeyType="done"
+                onSubmitEditing={handleSubmit(onSubmit)}
+                placeholderTextColor={theme.c.textSub}
+              />
+            )}
           />
-          {localErrors.confirm && <Text style={styles.errMsg}>{localErrors.confirm}</Text>}
+          {errors.confirm?.message && (
+            <Text style={styles.errMsg}>{errors.confirm.message}</Text>
+          )}
         </View>
 
-        {/* Hint Policy */}
         <View style={styles.hintContainer}>
           <Text style={styles.hintText}>
             Mật khẩu yêu cầu ít nhất 8 ký tự, bao gồm chữ hoa và chữ số.
@@ -209,23 +245,17 @@ export default function RegisterScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.btnPrimary, loading && styles.btnDisabled]}
-          onPress={handleRegister}
-          disabled={loading}
+          style={[styles.btnPrimary, isSubmitting && styles.btnDisabled]}
+          onPress={handleSubmit(onSubmit)}
+          disabled={isSubmitting}
           activeOpacity={0.85}
         >
-          {loading ? (
-            <ActivityIndicator color={theme.c.bg} size="small" />
+          {isSubmitting ? (
+            <ActivityIndicator color="#fff" size="small" />
           ) : (
             <Text style={styles.btnText}>Đăng ký tài khoản</Text>
           )}
         </TouchableOpacity>
-
-        <Text style={styles.termsText}>
-          Bằng cách tiếp tục, bạn đồng ý với{" "}
-          <Text style={styles.termsLink}>Điều khoản</Text> &{" "}
-          <Text style={styles.termsLink}>Bảo mật</Text> của MekoEdu.
-        </Text>
 
         <View style={styles.switchRow}>
           <Text style={styles.switchText}>Đã có tài khoản? </Text>
@@ -240,21 +270,8 @@ export default function RegisterScreen() {
   );
 }
 
-const createStyles = (theme: ReturnType<typeof useTheme>) => {
-  const inputShadow = Platform.select({
-    ios: {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.04,
-      shadowRadius: 3,
-    },
-    android: {
-      elevation: 1.5,
-    },
-    default: {},
-  });
-
-  return StyleSheet.create({
+const createStyles = (theme: ReturnType<typeof useTheme>) =>
+  StyleSheet.create({
     flex: {
       flex: 1,
       backgroundColor: theme.colors.background.primary,
@@ -279,15 +296,6 @@ const createStyles = (theme: ReturnType<typeof useTheme>) => {
       backgroundColor: theme.c.primary,
       alignItems: "center",
       justifyContent: "center",
-      ...Platform.select({
-        ios: {
-          shadowColor: theme.c.primary,
-          shadowOffset: { width: 0, height: 3 },
-          shadowOpacity: 0.2,
-          shadowRadius: 4,
-        },
-        android: { elevation: 3 },
-      }),
     },
     logoLetter: {
       color: "#fff",
@@ -298,7 +306,6 @@ const createStyles = (theme: ReturnType<typeof useTheme>) => {
       fontSize: 24,
       fontWeight: "800",
       color: theme.colors.primary[600],
-      letterSpacing: -0.5,
     },
     title: {
       fontSize: 24,
@@ -316,10 +323,10 @@ const createStyles = (theme: ReturnType<typeof useTheme>) => {
     errorBox: {
       backgroundColor: theme.colors.primary[50],
       borderRadius: theme.radius.lg,
-      padding: theme.spacing.component.cardPadding,
+      padding: theme.spacing[4],
       marginBottom: theme.spacing[4],
       borderWidth: 1,
-      borderColor: theme.colors.primary[200],
+      borderColor: theme.colors.error,
     },
     errorText: {
       color: theme.colors.error,
@@ -339,18 +346,16 @@ const createStyles = (theme: ReturnType<typeof useTheme>) => {
       color: theme.c.textSub,
       marginBottom: theme.spacing[2],
       textTransform: "uppercase",
-      letterSpacing: 0.5,
     },
     input: {
       backgroundColor: theme.c.bg,
       borderRadius: theme.radius.lg,
       borderWidth: 1,
       borderColor: theme.c.border,
-      paddingHorizontal: theme.spacing.component.inputPadding,
+      paddingHorizontal: theme.spacing[4],
       height: 50,
       fontSize: theme.typography.sizes.md,
       color: theme.c.text,
-      ...inputShadow,
     },
     inputErr: {
       borderColor: theme.colors.error,
@@ -359,11 +364,9 @@ const createStyles = (theme: ReturnType<typeof useTheme>) => {
       fontSize: 11,
       color: theme.colors.error,
       marginTop: theme.spacing[1],
-      marginLeft: 2,
     },
     hintContainer: {
       marginBottom: theme.spacing[6],
-      paddingHorizontal: 4,
     },
     hintText: {
       fontSize: 12,
@@ -377,16 +380,7 @@ const createStyles = (theme: ReturnType<typeof useTheme>) => {
       height: 52,
       alignItems: "center",
       justifyContent: "center",
-      marginBottom: theme.spacing[4],
-      ...Platform.select({
-        ios: {
-          shadowColor: theme.c.primary,
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.15,
-          shadowRadius: 6,
-        },
-        android: { elevation: 3 },
-      }),
+      marginBottom: theme.spacing[5],
     },
     btnDisabled: {
       opacity: 0.6,
@@ -395,24 +389,11 @@ const createStyles = (theme: ReturnType<typeof useTheme>) => {
       color: "#fff",
       fontSize: theme.typography.sizes.md,
       fontWeight: "700",
-      letterSpacing: 0.3,
-    },
-    termsText: {
-      fontSize: 12,
-      color: theme.c.textSub,
-      textAlign: "center",
-      marginBottom: theme.spacing[6],
-      lineHeight: 18,
-    },
-    termsLink: {
-      color: theme.c.primary,
-      fontWeight: "600",
     },
     switchRow: {
       flexDirection: "row",
       justifyContent: "center",
       alignItems: "center",
-      paddingBottom: theme.spacing[4],
     },
     switchText: {
       fontSize: theme.typography.sizes.sm,
@@ -423,5 +404,13 @@ const createStyles = (theme: ReturnType<typeof useTheme>) => {
       color: theme.c.primary,
       fontWeight: "700",
     },
+    logoCard: {
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: theme.spacing[0],
+    },
+    logoImage: {
+      width: 280,
+      height: 100,
+    },
   });
-};

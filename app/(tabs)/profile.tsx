@@ -1,5 +1,5 @@
-import { LiferayUserInfo, logoutUser } from "@/src/services/liferayService";
-import userService from "@/src/services/userService";
+import authService from "@/src/services/authService";
+import userService, { UserInfo } from "@/src/services/userService";
 import { useTheme } from "@/src/theme";
 import { ENV } from "@/src/types/env";
 import { router } from "expo-router";
@@ -15,16 +15,18 @@ import {
   Text,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { showToast } from "../_layout";
 
 const BASE_URL = ENV.API_URL;
 
 export default function ProfileScreen() {
   const { c, typography, spacing } = useTheme();
-  const [userInfo, setUserInfo] = useState<LiferayUserInfo | null>(null);
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
 
   const handleLogout = async () => {
     try {
-      await logoutUser();
+      await authService.logout();
+      showToast("success", "Đăng xuất thành công");
       router.replace("/login");
     } catch (error) {
       console.log("Logout error:", error);
@@ -76,23 +78,6 @@ export default function ProfileScreen() {
                     style={[styles.avatar, { backgroundColor: c.primary }]}
                   />
                 )}
-                <View
-                  style={[
-                    styles.statusDot,
-                    {
-                      backgroundColor: userInfo?.hasLoginDate
-                        ? "#4CAF50"
-                        : c.bg,
-                    },
-                  ]}
-                >
-                  <IconButton
-                    icon="check"
-                    size={16}
-                    iconColor={userInfo?.hasLoginDate ? "#fff" : c.primary}
-                    style={styles.statusIcon}
-                  />
-                </View>
               </View>
 
               <View style={styles.headerText}>
@@ -257,7 +242,7 @@ function ProfileItem({
           size={42}
           icon={icon}
           color={color}
-          style={{ backgroundColor: color + "18" }}
+          style={{ backgroundColor: theme.primaryLight }}
         />
       )}
       right={() => <List.Icon icon="chevron-right" color={theme.textSub} />}
