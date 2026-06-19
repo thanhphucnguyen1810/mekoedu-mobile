@@ -1,105 +1,166 @@
+/**
+ * src/services/liferay/authService.ts
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Xử lý toàn bộ luồng xác thực với Liferay OAuth2:
+ *   - registerUser   – tạo tài khoản mới (client_credentials flow)
+ *   - loginUser      – đăng nhập, lưu token vào AsyncStorage
+ *   - refreshAccessToken – làm mới access token
+ *   - logoutUser     – xóa token
+ *   - getUserToken   – lấy access token từ storage
+ *
+ * Không phụ thuộc vào `http` (httpClient) để tránh vòng lặp interceptor.
+ * Dùng `fetch` thuần cho các OAuth2 endpoint.
+ */
 
-class AuthService {
-  private baseURL: string = 'http://192.168.2.152:8080';
-  private clientId: string = 'id-2a5344c9-dfb3-92b3-e5fd-ecb50b73536';
-  private clientSecret: string = 'secret-7f2d4270-6b84-de1d-68d2-7c4e430d965';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios from "axios";
+import { ENV } from "../config/env";
+import { TOKEN_KEYS } from "../config/tokenKeys";
+import type { RegisterPayload, TokenResponse, UserInfo } from "../types/liferay";
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Tạo Basic Auth header từ CLIENT_ID + CLIENT_SECRET */
+function basicAuthHeader(): string {
+  return `Basic ${btoa(`${ENV.CLIENT_ID}:${ENV.CLIENT_SECRET}`)}`;
+}
+
+/** Gọi /o/oauth2/token với URLSearchParams body */
+async function oauthPost(params: Record<string, string>): Promise<TokenResponse> {
+  const res = await fetch(`${ENV.API_URL}/o/oauth2/token`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: basicAuthHeader(),
+    },
+    body: new URLSearchParams(params).toString(),
+  });
+
+  const responseText = await res.text();
+
+  let data: any = {};
+  if (responseText) {
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.warn("OAuth Response không phải là JSON hợp lệ:", responseText);
+    }
+  }
   
-  public accessToken: string | null = null;
-
-  async register(email: string, firstName: string, lastName: string) {
-    try {
-      const response = await fetch(`${this.baseURL}/o/headless-admin-user/v1.0/user-accounts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // Tùy cấu hình Liferay, đôi khi API đăng ký mở không cần token, 
-          // nhưng nếu yêu cầu, bạn phải dùng Token của một tài khoản Admin.
-        },
-        body: JSON.stringify({
-          emailAddress: email,
-          givenName: firstName,
-          familyName: lastName,
-          // Liferay thường tự gen password và gửi email, hoặc bạn có thể truyền password tùy cấu hình
-        })
-      });
-
-      if (response.ok) {
-        console.log('Đăng ký thành công!');
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error('Lỗi API Register:', error);
-      return false;
-    }
+  if (!res.ok) {
+    throw new Error(data.error_description ?? data.error ?? `OAuth error ${res.status}`);
   }
+  return data as TokenResponse;
+}
 
-  async login(email: string, password: string): Promise<boolean> {
-    try {
-      const details: Record<string, string> = {
-        'grant_type': 'password',
-        'client_id': this.clientId,
-        'client_secret': this.clientSecret,
-        'username': email,
-        'password': password
-      };
-
-      const formBody = Object.keys(details)
-        .map(key => encodeURIComponent(key) + '=' + encodeURIComponent(details[key]))
-        .join('&');
-
-      // Gọi API lấy token của Liferay
-      const response = await fetch(`${this.baseURL}/o/oauth2/token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
-        },
-        body: formBody
-      });
-
-      const data = await response.json();
-      
-      if (data.access_token) {
-        this.accessToken = data.access_token;
-        console.log('Token lấy thành công:', this.accessToken);
-        // Mẹo: Bạn nên dùng AsyncStorage để lưu token này lại dùng cho những lần mở app sau
-        return true;
-      } else {
-        console.log('Sai email hoặc mật khẩu');
-        return false;
-      }
-    } catch (error) {
-      console.error('Lỗi kết nối API Login:', error);
-      return false;
-    }
-  }
-
-  // Thêm hàm này vào bên trong class AuthService ở trên
-  async apiRequest(endpoint: string, options: any = {}) {
-    const headers = {
-      ...options.headers,
-      'Content-Type': 'application/json',
-    };
-
-    // Đính kèm token nếu đã đăng nhập
-    if (this.accessToken) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`;
-    }
-
-    const response = await fetch(`${this.baseURL}${endpoint}`, {
-      ...options,
-      headers,
-    });
-
-    // Xử lý lỗi 401 khi token hết hạn
-    if (response.status === 401) {
-      console.warn('Token hết hạn hoặc không hợp lệ. Cần đăng nhập lại!');
-      // Code xử lý văng ra màn hình đăng nhập ở đây
-    }
-
-    return response.json();
+/** Lưu token mới vào AsyncStorage */
+async function persistTokens(data: TokenResponse): Promise<void> {
+  await AsyncStorage.setItem(TOKEN_KEYS.ACCESS, data.access_token);
+  if (data.refresh_token) {
+    await AsyncStorage.setItem(TOKEN_KEYS.REFRESH, data.refresh_token);
   }
 }
 
-export const authService = new AuthService();
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+export async function getUserToken(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(TOKEN_KEYS.ACCESS);
+  } catch {
+    return null;
+  }
+}
+
+export async function getRefreshToken(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(TOKEN_KEYS.REFRESH);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Đăng ký tài khoản mới trên Liferay.
+ * Dùng client_credentials token (không cần user đăng nhập).
+ */
+export async function registerUser(payload: RegisterPayload): Promise<UserInfo> {
+  // 1. Lấy client token
+  const { access_token: clientToken } = await oauthPost({
+    grant_type: "client_credentials",
+  });
+
+  // 2. Sinh screenName nếu không truyền
+  const screenName =
+    payload.screenName ??
+    payload.emailAddress
+      .split("@")[0]
+      .replace(/[^a-z0-9]/gi, "")
+      .toLowerCase() +
+      Math.floor(Math.random() * 9000 + 1000);
+
+  // 3. Tạo user
+  try {
+    const res = await axios.post<UserInfo>(
+      `${ENV.API_URL}/o/headless-admin-user/v1.0/user-accounts`,
+      {
+        emailAddress: payload.emailAddress.trim(),
+        givenName: payload.givenName.trim(),
+        familyName: payload.familyName.trim(),
+        alternateName: screenName,
+        password: payload.password,
+      },
+      {
+        headers: {
+          "Content-Type": "application/json", 
+          Authorization: `Bearer ${clientToken}`,
+        },
+      }
+    );
+    return res.data;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response) {
+      const d = error.response.data;
+      throw new Error(d.detail ?? d.title ?? d.message ?? `Register failed [${error.response.status}]`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Đăng nhập bằng Resource Owner Password Credentials (ROPC).
+ * Trả về tokens + thông tin user cơ bản.
+ */
+export async function loginUser(
+  email: string,
+  password: string
+): Promise<{ access_token: string; refresh_token: string }> {
+  const tokens = await oauthPost({
+    grant_type: "password",
+    username: email.trim(),
+    password,
+  });
+
+  await persistTokens(tokens);
+  return { access_token: tokens.access_token, refresh_token: tokens.refresh_token };
+}
+
+/** Làm mới access token bằng refresh token */
+export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
+  const tokens = await oauthPost({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+  });
+  await persistTokens(tokens);
+  return tokens;
+}
+
+/** Đăng xuất: xóa toàn bộ token khỏi storage */
+export async function logoutUser(): Promise<void> {
+  await AsyncStorage.multiRemove([TOKEN_KEYS.ACCESS, TOKEN_KEYS.REFRESH]);
+}
+
+/** Lấy client_credentials token (không cần user đăng nhập) */
+export async function getClientToken(): Promise<string> {
+  const tokens = await oauthPost({ grant_type: "client_credentials" });
+  return tokens.access_token;
+}

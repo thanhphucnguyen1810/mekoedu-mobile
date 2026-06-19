@@ -1,110 +1,143 @@
 // app/welcome.tsx
+import { AppButton } from "@/src/components/common";
+import { AppConfig } from "@/src/config/appConfig";
 import { useTheme } from "@/src/theme";
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from "expo-router";
 import React from "react";
-import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 export default function WelcomeScreen() {
-  const { c, radius } = useTheme();
+  const { c, spacing } = useTheme();
   const router = useRouter();
+  const welcomeText = AppConfig.welcome;
+  const store = AppConfig.store;
 
   return (
     <View style={[styles.container, { backgroundColor: c.bg }]}>
-      {/* Header Logo */}
       <View style={styles.logoContainer}>
-        <View style={styles.logoBox}>
-          <Text style={styles.logoText}>M</Text>
-        </View>
-        <Text style={[styles.brandText, { color: c.primary }]}>MEKOEDU</Text>
-        <Text style={[styles.subText, { color: c.textSub }]}>
-          Nền tảng học tập & thi trực tuyến hàng đầu
-        </Text>
+        <Image
+          source={store.logo}
+          style={[{ width: store.logoWidth, height: store.logoHeight }]}
+          resizeMode="contain"
+        />
       </View>
 
-      {/* Các nút điều hướng */}
-      <View style={styles.buttonContainer}>
-        {/* Nút Đăng nhập */}
-        <TouchableOpacity
-          style={[styles.button, { backgroundColor: c.primary, borderRadius: radius.md }]}
-          onPress={() => router.push("/(auth)/login")}
-        >
-          <Text style={styles.loginText}>Đăng nhập</Text>
-        </TouchableOpacity>
+      {/* Auth Section */}
+      <View style={styles.authSection}>
+        <View style={styles.authTitleContainer}>
+          <View style={[styles.authLine, { backgroundColor: c.border }]} />
+          <Text style={[styles.authTitle, { color: c.textSub }]}>
+            {welcomeText.authTitle}
+          </Text>
+          <View style={[styles.authLine, { backgroundColor: c.border }]} />
+        </View>
 
-        {/* Nút Đăng ký */}
-        <TouchableOpacity
-          style={[styles.button, styles.registerBtn, { borderColor: c.primary, borderRadius: radius.md }]}
-          onPress={() => router.push("/(auth)/register")}
-        >
-          <Text style={[styles.registerText, { color: c.primary }]}>Đăng ký</Text>
-        </TouchableOpacity>
+        <View style={[styles.buttonContainer, { gap: spacing.md }]}>
+          <AppButton
+            title={welcomeText.loginButton}
+            onPress={() => router.push("/(auth)/login")}
+            variant="primary"
+          />
+          <AppButton
+            title={welcomeText.registerButton}
+            onPress={() => router.push("/(auth)/register")}
+            variant="outline"
+          />
+        </View>
+
+        {/* <View style={styles.socialSection}>
+          <View style={styles.dividerContainer}>
+            <View style={[styles.divider, { backgroundColor: c.border }]} />
+            <Text style={[styles.dividerText, { color: c.textSub }]}>
+              {welcomeText.socialDivider}
+            </Text>
+            <View style={[styles.divider, { backgroundColor: c.border }]} />
+          </View>
+
+          <View style={styles.socialButtons}>
+            <TouchableOpacity style={[styles.socialBtn, { borderColor: c.border }]}>
+              <Ionicons name="logo-google" size={22} color="#DB4437" />
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.socialBtn, { borderColor: c.border }]}>
+              <Ionicons name="logo-facebook" size={22} color="#1877F2" />
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.socialBtn, { borderColor: c.border }]}>
+              <Ionicons name="logo-apple" size={22} color={c.text} />
+            </TouchableOpacity>
+          </View>
+        </View> */}
+
+        <View style={styles.supportSection}>
+          <Ionicons name="shield-checkmark-outline" size={14} color={c.primary} />
+          <Text style={[styles.supportText, { color: c.textSub }]}>
+            {welcomeText.supportText}
+          </Text>
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  container: { 
     flex: 1,
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 48,
-    paddingHorizontal: 28,
+    justifyContent: "space-around", 
   },
   logoContainer: {
+    alignItems: "center",
+    marginTop: 200,
+  },
+  authSection: {
+    width: "100%",
+    paddingHorizontal: 24,
     flex: 1,
     justifyContent: "center",
+  },
+  authTitleContainer: {
+    flexDirection: "row",
     alignItems: "center",
+    marginBottom: 24,
   },
-  logoBox: {
-    width: 80,
-    height: 80,
-    backgroundColor: "#FFECEF",
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 16,
+  authLine: {
+    flex: 1,
+    height: 1,
   },
-  logoText: {
-    fontSize: 42,
-    fontWeight: "900",
-    color: "#EF4444",
+  authTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginHorizontal: 12,
+    letterSpacing: 0.5,
   },
-  brandText: {
-    fontSize: 28,
-    fontWeight: "bold",
-    letterSpacing: 2,
-    marginBottom: 12,
+  buttonContainer: { width: "100%" },
+  socialSection: { marginTop: 32 },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
   },
-  subText: {
-    fontSize: 13,
-    fontWeight: "500",
-    textAlign: "center",
-    paddingHorizontal: 16,
+  divider: { flex: 1, height: 0.5 },
+  dividerText: { fontSize: 13, marginHorizontal: 16 },
+  socialButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 20,
   },
-  buttonContainer: {
-    width: "100%",
-    gap: 12,
-  },
-  button: {
-    width: "100%",
+  socialBtn: {
+    width: 48,
     height: 48,
-    justifyContent: "center",
-    alignItems: "center",
+    borderRadius: 24,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  registerBtn: {
-    borderWidth: 1.5,
-    backgroundColor: "transparent",
+  supportSection: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 40,
+    marginBottom: 20,
   },
-  loginText: {
-    color: "#FFF",
-    fontWeight: "bold",
-    fontSize: 15,
-  },
-  registerText: {
-    fontWeight: "bold",
-    fontSize: 15,
-  },
+  supportText: { fontSize: 12 },
 });

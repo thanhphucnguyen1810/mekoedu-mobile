@@ -3,6 +3,8 @@
 //   extends: ['universe/native', 'plugin:react-hooks/recommended', 'expo'],
 //   plugins: ['react', 'react-native'],
 //   parserOptions: {
+//     ecmaVersion: 'latest',
+//     sourceType: 'module',
 //     ecmaFeatures: {
 //       jsx: true,
 //     },
@@ -40,4 +42,4 @@
 //       typescript: {}, // Giúp ESLint hiểu đường dẫn @/ của bạn
 //     },
 //   },
-// }
+// };

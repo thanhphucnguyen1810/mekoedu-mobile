@@ -173,22 +173,10 @@ export const getPadding = (
   }
 };
 
-/**
- * Tạo khoảng cách gap (dùng cho Flexbox gap property)
- *
- * @param spacing - Giá trị spacing từ hệ thống
- * @returns Gap value
- *
- * @example
- * <View style={{ gap: getGap(Spacing[4]) }}> // gap: 16
- */
 export const getGap = (spacing: number): number => spacing;
 
 // ==================== SHORTCUTS (Tiện ích) ====================
 
-/**
- * Các shortcuts spacing thông dụng
- */
 export const SpacingUtils = {
   /** Padding màn hình chuẩn */
   screen: {

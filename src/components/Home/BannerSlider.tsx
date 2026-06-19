@@ -1,10 +1,24 @@
-import { Radius } from "@/src/theme";
+import { Radius, Spacing } from "@/src/theme";
 import { Image } from "expo-image";
 import React, { useEffect, useRef, useState } from "react";
-import { Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, StyleSheet, View } from "react-native";
+import {
+  Dimensions,
+  FlatList,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  StyleSheet,
+  View,
+} from "react-native";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const CAROUSEL_WIDTH = SCREEN_WIDTH - 24;
+
+const ROOT_PADDING = 8; 
+
+const AVAILABLE_WIDTH = SCREEN_WIDTH - (ROOT_PADDING * 2);
+
+const VISUAL_PAD = Spacing.layout.screenHorizontal - ROOT_PADDING; 
+
+const CAROUSEL_WIDTH = AVAILABLE_WIDTH - (VISUAL_PAD * 2);
 
 interface BannerSliderProps {
   banners: string[];
@@ -14,33 +28,21 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
 
-  // Tự động chuyển slide sau 3 giây (Auto-play)
   useEffect(() => {
     if (!banners || banners.length <= 1) return;
-
     const interval = setInterval(() => {
-      let nextIndex = activeIndex + 1;
-      if (nextIndex >= banners.length) {
-        nextIndex = 0;
-      }
-      
+      const nextIndex = (activeIndex + 1) % banners.length;
       setActiveIndex(nextIndex);
-      flatListRef.current?.scrollToIndex({
-        index: nextIndex,
-        animated: true,
-      });
+      flatListRef.current?.scrollToIndex({ index: nextIndex, animated: true });
     }, 3000);
-
     return () => clearInterval(interval);
   }, [activeIndex, banners?.length]);
 
-  // Lắng nghe sự kiện vuốt tay để cập nhật dấu chấm trang
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const scrollPosition = event.nativeEvent.contentOffset.x;
-    const index = Math.round(scrollPosition / CAROUSEL_WIDTH);
-    if (index !== activeIndex) {
-      setActiveIndex(index);
-    }
+    const index = Math.round(
+      event.nativeEvent.contentOffset.x / CAROUSEL_WIDTH
+    );
+    if (index !== activeIndex) setActiveIndex(index);
   };
 
   if (!banners || banners.length === 0) return null;
@@ -50,18 +52,16 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
       <FlatList
         ref={flatListRef}
         data={banners}
-        keyExtractor={(_, index) => index.toString()}
+        keyExtractor={(_, i) => i.toString()}
         horizontal
-        pagingEnabled
+        pagingEnabled // Bật lại tính năng khóa trang chuẩn của React Native
         showsHorizontalScrollIndicator={false}
         onScroll={handleScroll}
         scrollEventThrottle={16}
-        snapToInterval={CAROUSEL_WIDTH}
-        decelerationRate="fast"
         renderItem={({ item }) => (
           <View style={styles.slideWrapper}>
             <Image
-              source={{ uri: item }}
+              source={item}
               style={styles.image}
               contentFit="cover"
               transition={200}
@@ -70,7 +70,6 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
         )}
       />
 
-      {/* Dấu chấm chỉ số trang */}
       {banners.length > 1 && (
         <View style={styles.pagination}>
           {banners.map((_, index) => (
@@ -90,23 +89,25 @@ export const BannerSlider = ({ banners }: BannerSliderProps) => {
 
 const styles = StyleSheet.create({
   container: {
-    alignItems: "center",
-    marginVertical: 12,
+    marginTop: Spacing[3],
+    marginBottom: Spacing[2],
+    // Ép khoảng đệm cho container để giới hạn FlatList nằm gọn gàng phía trong
+    paddingHorizontal: VISUAL_PAD,
+    position: "relative",
   },
   slideWrapper: {
     width: CAROUSEL_WIDTH,
     height: 160,
-    paddingHorizontal: 4,
   },
   image: {
     width: "100%",
     height: "100%",
-    borderRadius: Radius?.lg || 12,
+    borderRadius: Radius.lg,
   },
   pagination: {
     flexDirection: "row",
     position: "absolute",
-    bottom: 12,
+    bottom: Spacing[2],
     alignSelf: "center",
   },
   dot: {
@@ -119,7 +120,7 @@ const styles = StyleSheet.create({
     width: 14,
   },
   inactiveDot: {
-    backgroundColor: "rgba(255, 255, 255, 0.45)",
+    backgroundColor: "rgba(255,255,255,0.45)",
     width: 6,
   },
 });

@@ -1,498 +1,174 @@
-// app/cart/index.tsx
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { RefreshControl, ActivityIndicator, Alert, FlatList, Platform, StatusBar, StyleSheet, View } from 'react-native';
+import { useDispatch, useSelector } from 'react-redux';
+import { router } from 'expo-router';
+import { Colors, Spacing, useTheme } from '@/src/theme';
+import { useCartSync } from '@/src/hooks/useCartSync';
+import { clearCart as clearCartAPI, applyCoupon as applyCouponAPI, removeCoupon as removeCouponAPI } from '@/src/services/liferay';
 import {
-  AppButton,
-  AppCard,
-  AppDivider,
-  AppHeader,
-  AppText
-} from "@/src/components/common";
-import {
+  CartItem,
   clearCart,
-  removeFromCart,
-  selectCartCount,
+  deselectAllItems,
+  applyCoupon as reduxApplyCoupon,
+  removeCoupon as reduxRemoveCoupon,
+  selectAllItems,
+  selectAppliedCoupon,
+  selectCartId,
   selectCartItems,
-  selectCartSavings,
-  selectCartTotal,
-  updateQuantity
-} from "@/src/store/slices/cartSlice";
-import { Colors, Spacing, useTheme } from "@/src/theme";
-import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import React, { useCallback } from "react";
-import {
-  Alert,
-  FlatList,
-  Image,
-  StatusBar,
-  StyleSheet,
-  TouchableOpacity,
-  View
-} from "react-native";
-import { useDispatch, useSelector } from "react-redux";
+  selectCartSyncing,
+  selectIsAllSelected,
+  selectSelectedIds,
+  toggleSelectItem,
+} from '@/src/store/slices/cartSlice';
+import { selectAccountId } from '@/src/store/slices/liferayAuthSlice';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-interface CartItem {
-  id: string | number;
-  name: string;
-  thumbnail?: string;
-  price: number;
-  promoPrice?: number;
-  catalogName?: string;
-  quantity: number;
-}
+// Import from src/components/cart
+import { CartHeader } from '@/src/components/cart/CartHeader';
+import { EmptyCart } from '@/src/components/cart/EmptyCart';
+import { CheckoutBar } from '@/src/components/cart/CheckoutBar';
+import { ShopHeader } from '@/src/components/cart/ShopHeader';
+import { CartItemCard } from '@/src/components/cart/CartItemCard';
+import { CouponSection } from '@/src/components/cart/CouponSection';
+import { PlatformVoucher } from '@/src/components/cart/PlatformVoucher';
+import { OrderSummaryCard } from '@/src/components/cart/OrderSummaryCard';
+import { SectionSep } from '@/src/components/cart/SectionSep';
+import { MEKO_RED, THUMB_SIZE } from '@/src/components/cart/cartConstants';
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-const fmtVND = (n: number) =>
-  n.toLocaleString("vi-VN", { style: "currency", currency: "VND" });
+type ListRow =
+  | { type: 'shopHeader'; shopName: string }
+  | { type: 'item'; item: CartItem }
+  | { type: 'shopCoupon'; shopName: string }
+  | { type: 'sep' }
+  | { type: 'platformVoucher' }
+  | { type: 'summary' };
 
-const getEffectivePrice = (item: CartItem) =>
-  item.promoPrice && item.promoPrice > 0 && item.promoPrice < item.price
-    ? item.promoPrice
-    : item.price;
-
-// ─── Subcomponents ────────────────────────────────────────────────────────────
-
-function CartItemCard({
-  item,
-  onRemove,
-  onQuantityChange,
-}: {
-  item: CartItem;
-  onRemove: (id: string | number) => void;
-  onQuantityChange: (id: string | number, qty: number) => void;
-}) {
-  const { c } = useTheme();
-  const effectivePrice = getEffectivePrice(item);
-  const hasDiscount =
-    item.promoPrice && item.promoPrice > 0 && item.promoPrice < item.price;
-  const discountPct = hasDiscount
-    ? Math.round((1 - item.promoPrice! / item.price) * 100)
-    : 0;
-
-  return (
-    <AppCard style={styles.itemCard} padding="md">
-      <View style={styles.itemContent}>
-        {/* Thumbnail */}
-        <View style={styles.itemThumb}>
-          {item.thumbnail ? (
-            <Image
-              source={{ uri: item.thumbnail }}
-              style={styles.thumbImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={[styles.thumbPlaceholder, { backgroundColor: c.border }]}>
-              <Ionicons name="book-outline" size={Spacing.xl} color={c.textSub} />
-            </View>
-          )}
-          {hasDiscount && (
-            <View style={[styles.discountBadge, { backgroundColor: Colors.error }]}>
-              <AppText variant="overline" style={styles.discountBadgeText}>
-                -{discountPct}%
-              </AppText>
-            </View>
-          )}
-        </View>
-
-        {/* Info */}
-        <View style={styles.itemInfo}>
-          {item.catalogName && (
-            <AppText variant="caption" color="primary" style={styles.itemBrand}>
-              {item.catalogName}
-            </AppText>
-          )}
-          <AppText variant="body2" weight="600" numberOfLines={2} style={styles.itemName}>
-            {item.name}
-          </AppText>
-
-          <View style={styles.itemPriceRow}>
-            <AppText variant="body1" weight="700" color="primary">
-              {fmtVND(effectivePrice)}
-            </AppText>
-            {hasDiscount && (
-              <AppText variant="caption" color="textSub" style={styles.itemOriginalPrice}>
-                {fmtVND(item.price)}
-              </AppText>
-            )}
-          </View>
-
-          {/* Quantity + Remove */}
-          <View style={styles.itemActions}>
-            <View style={[styles.qtyControl, { borderColor: c.border }]}>
-              <TouchableOpacity
-                style={[styles.qtyBtn, { backgroundColor: c.bgSoft }]}
-                onPress={() =>
-                  item.quantity > 1
-                    ? onQuantityChange(item.id, item.quantity - 1)
-                    : onRemove(item.id)
-                }
-                hitSlop={{ top: Spacing.sm, bottom: Spacing.sm, left: Spacing.sm, right: Spacing.sm }}
-              >
-                <AppText style={styles.qtyBtnText}>−</AppText>
-              </TouchableOpacity>
-              
-              <AppText variant="body2" weight="600" style={styles.qtyValue}>
-                {item.quantity}
-              </AppText>
-              
-              <TouchableOpacity
-                style={[styles.qtyBtn, { backgroundColor: c.bgSoft }]}
-                onPress={() => onQuantityChange(item.id, item.quantity + 1)}
-                hitSlop={{ top: Spacing.sm, bottom: Spacing.sm, left: Spacing.sm, right: Spacing.sm }}
-              >
-                <AppText style={styles.qtyBtnText}>+</AppText>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={styles.removeBtn}
-              onPress={() => onRemove(item.id)}
-              hitSlop={{ top: Spacing.sm, bottom: Spacing.sm, left: Spacing.sm, right: Spacing.sm }}
-            >
-              <AppText variant="caption" color="error" weight="600">
-                Xóa
-              </AppText>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </AppCard>
-  );
-}
-
-function OrderSummary({
-  items,
-  onCheckout,
-}: {
-  items: CartItem[];
-  onCheckout: () => void;
-}) {
-  const { c } = useTheme();
-  const subtotal = items.reduce(
-    (sum, item) => sum + getEffectivePrice(item) * item.quantity,
-    0
-  );
-  const originalTotal = items.reduce(
-    (sum, item) => sum + item.price * item.quantity,
-    0
-  );
-  const saved = originalTotal - subtotal;
-
-  return (
-    <AppCard style={styles.summaryCard} padding="lg">
-      <AppText variant="h4" weight="600" style={styles.summaryTitle}>
-        Tóm tắt đơn hàng
-      </AppText>
-
-      <View style={styles.summaryRow}>
-        <AppText variant="body2" color="textSub">
-          Tạm tính ({items.reduce((s, i) => s + i.quantity, 0)} khóa học)
-        </AppText>
-        <AppText variant="body2" weight="500">
-          {fmtVND(originalTotal)}
-        </AppText>
-      </View>
-
-      {saved > 0 && (
-        <View style={styles.summaryRow}>
-          <AppText variant="body2" color="success" weight="500">
-            Tiết kiệm
-          </AppText>
-          <AppText variant="body2" color="success" weight="600">
-            -{fmtVND(saved)}
-          </AppText>
-        </View>
-      )}
-
-      <AppDivider style={styles.summaryDivider} />
-
-      <View style={styles.summaryRow}>
-        <AppText variant="body1" weight="700">
-          Tổng cộng
-        </AppText>
-        <AppText variant="h3" weight="700" color="primary">
-          {fmtVND(subtotal)}
-        </AppText>
-      </View>
-
-      <AppButton
-        title="Thanh toán ngay"
-        onPress={onCheckout}
-        variant="primary"
-        size="large"
-        style={styles.checkoutBtn}
-      />
-
-      <AppButton
-        title="Tiếp tục mua sắm"
-        onPress={() => router.push("/(tabs)/courses")}
-        variant="outline"
-        size="medium"
-        style={styles.continueBtn}
-      />
-    </AppCard>
-  );
-}
-
-function EmptyCart() {
-  const { c } = useTheme();
-  
-  return (
-    <View style={styles.emptyContainer}>
-      <View style={styles.emptyIconContainer}>
-        <Ionicons name="cart-outline" size={80} color={c.textSub} />
-      </View>
-      <AppText variant="h3" style={styles.emptyTitle}>
-        Giỏ hàng trống
-      </AppText>
-      <AppText variant="body2" color="textSub" style={styles.emptyDesc}>
-        Bạn chưa thêm khóa học nào vào giỏ hàng.
-      </AppText>
-      <AppButton
-        title="Khám phá khóa học"
-        onPress={() => router.push("/(tabs)/courses")}
-        variant="primary"
-        size="large"
-        style={styles.emptyAction}
-      />
-    </View>
-  );
-}
-
-// ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function CartScreen() {
   const dispatch = useDispatch();
-  const { c } = useTheme();
+  const { spacing } = useTheme();
+
   const cartItems = useSelector(selectCartItems);
-  const cartCount = useSelector(selectCartCount);
-  const cartTotal = useSelector(selectCartTotal);
-  const cartSavings = useSelector(selectCartSavings);
+  const selectedIds = useSelector(selectSelectedIds);
+  const cartId = useSelector(selectCartId);
+  const appliedCoupon = useSelector(selectAppliedCoupon);
+  const syncing = useSelector(selectCartSyncing);
+  const isAllSelected = useSelector(selectIsAllSelected);
 
-  const handleRemove = useCallback(
-    (id: string | number) => {
-      Alert.alert("Xóa khóa học", "Bạn có chắc muốn xóa khóa học này?", [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Xóa",
-          style: "destructive",
-          onPress: () => dispatch(removeFromCart(id)),
-        },
-      ]);
-    },
-    [dispatch]
-  );
+  const { loadCartFromServer, updateQuantityAsync, removeItemAsync } = useCartSync();
+  const [localLoading, setLocalLoading] = useState(false);
+  const isLoading = syncing || localLoading;
 
-  const handleQtyChange = useCallback(
-    (id: string | number, qty: number) => {
-      dispatch(updateQuantity({ id, quantity: qty }));
-    },
-    [dispatch]
-  );
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadCartFromServer();
+    setRefreshing(false);
+  }, [loadCartFromServer]);
 
-  const handleClearCart = useCallback(() => {
-    Alert.alert("Xóa giỏ hàng", "Bạn có chắc muốn xóa toàn bộ giỏ hàng?", [
-      { text: "Hủy", style: "cancel" },
-      {
-        text: "Xóa tất cả",
-        style: "destructive",
-        onPress: () => dispatch(clearCart()),
-      },
+  const handleToggleSelect = useCallback((id: string | number) => dispatch(toggleSelectItem(id)), [dispatch]);
+  const handleToggleAll = useCallback(() => isAllSelected ? dispatch(deselectAllItems()) : dispatch(selectAllItems()), [dispatch, isAllSelected]);
+  const handleRemove = useCallback((item: CartItem) => {
+    Alert.alert('Xoá khoá học', `Xoá "${item.name}" khỏi giỏ hàng?`, [
+      { text: 'Huỷ', style: 'cancel' },
+      { text: 'Xoá', style: 'destructive', onPress: () => removeItemAsync(item.id, item.cartItemId) },
     ]);
-  }, [dispatch]);
-
+  }, [removeItemAsync]);
+  const handleQtyChange = useCallback((item: CartItem, qty: number) => updateQuantityAsync(item.id, item.cartItemId, qty), [updateQuantityAsync]);
+  const handleClearCart = useCallback(() => {
+    Alert.alert('Xoá giỏ hàng', 'Xoá toàn bộ khoá học trong giỏ?', [
+      { text: 'Huỷ', style: 'cancel' },
+      { text: 'Xoá tất cả', style: 'destructive', onPress: async () => { if (cartId) { setLocalLoading(true); await clearCartAPI(cartId); dispatch(clearCart()); setLocalLoading(false); } } },
+    ]);
+  }, [dispatch, cartId]);
+  const handleApplyCoupon = useCallback(async (code: string) => {
+    if (!cartId) return;
+    setLocalLoading(true);
+    const updatedCart = await applyCouponAPI(cartId, code);
+    if (updatedCart) {
+      dispatch(reduxApplyCoupon({ code: code.toUpperCase(), discountType: 'fixed', discountValue: updatedCart.discountTotal ?? 0 }));
+      Alert.alert('✓ Áp dụng thành công', `Mã ${code.toUpperCase()} đã được áp dụng.`);
+    } else Alert.alert('Mã không hợp lệ', 'Vui lòng kiểm tra lại mã giảm giá.');
+    setLocalLoading(false);
+  }, [dispatch, cartId]);
+  const handleRemoveCoupon = useCallback(async () => {
+    if (!cartId) return;
+    setLocalLoading(true);
+    const ok = await removeCouponAPI(cartId);
+    if (ok) dispatch(reduxRemoveCoupon());
+    setLocalLoading(false);
+  }, [dispatch, cartId]);
   const handleCheckout = useCallback(() => {
-    router.push("/cart/checkout");
-  }, []);
+    const selectedItems = cartItems.filter(i => selectedIds.includes(i.id));
+    router.push({ pathname: '/cart/checkout', params: { selectedItems: JSON.stringify(selectedItems.map(i => i.id)), coupon: appliedCoupon ? JSON.stringify(appliedCoupon) : undefined } });
+  }, [cartItems, selectedIds, appliedCoupon]);
 
-  const isEmpty = cartItems.length === 0;
+  const shopGroups = useMemo(() => {
+    const map = new Map<string, CartItem[]>();
+    for (const item of cartItems) {
+      const key = item.catalogName ?? 'MekoEdu';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(item);
+    }
+    return Array.from(map.entries());
+  }, [cartItems]);
+
+  const listData: ListRow[] = useMemo(() => {
+    const rows: ListRow[] = [];
+    shopGroups.forEach(([shopName, items], idx) => {
+      rows.push({ type: 'shopHeader', shopName });
+      items.forEach(item => rows.push({ type: 'item', item }));
+      rows.push({ type: 'shopCoupon', shopName });
+      if (idx < shopGroups.length - 1) rows.push({ type: 'sep' });
+    });
+    rows.push({ type: 'sep' }, { type: 'platformVoucher' }, { type: 'sep' }, { type: 'summary' });
+    return rows;
+  }, [shopGroups]);
+
+  const shopAllChecked = useCallback((items: CartItem[]) => items.every(i => selectedIds.includes(i.id)), [selectedIds]);
+  const toggleShopAll = useCallback((items: CartItem[]) => {
+    const allChecked = items.every(i => selectedIds.includes(i.id));
+    items.forEach(i => {
+      const isSelected = selectedIds.includes(i.id);
+      if ((allChecked && isSelected) || (!allChecked && !isSelected)) dispatch(toggleSelectItem(i.id));
+    });
+  }, [dispatch, selectedIds]);
+
+  const renderRow = useCallback(({ item: row }: { item: ListRow }) => {
+    if (row.type === 'sep') return <SectionSep />;
+    if (row.type === 'platformVoucher') return <><PlatformVoucher /><CouponSection appliedCoupon={appliedCoupon} onApply={handleApplyCoupon} onRemove={handleRemoveCoupon} /></>;
+    if (row.type === 'summary') return <OrderSummaryCard />;
+    if (row.type === 'shopHeader') {
+      const shopItems = shopGroups.find(([n]) => n === row.shopName)?.[1] ?? [];
+      return <ShopHeader shopName={row.shopName} allChecked={shopAllChecked(shopItems)} onToggleAll={() => toggleShopAll(shopItems)} />;
+    }
+    if (row.type === 'shopCoupon') return null;
+    if (row.type === 'item') {
+      return (
+        <>
+          <CartItemCard item={row.item} selected={selectedIds.includes(row.item.id)} onToggleSelect={handleToggleSelect} onRemove={handleRemove} onQuantityChange={handleQtyChange} />
+          <View style={{ height: 0.5, backgroundColor: Colors.neutral[100], marginLeft: THUMB_SIZE + 10 + Spacing.md + 22 + 10 }} />
+        </>
+      );
+    }
+    return null;
+  }, [selectedIds, shopGroups, appliedCoupon, shopAllChecked, toggleShopAll, handleToggleSelect, handleRemove, handleQtyChange, handleApplyCoupon, handleRemoveCoupon]);
 
   return (
-    <View style={[styles.container, { backgroundColor: Colors.background.secondary }]}>
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor={Colors.background.primary}
-      />
-      <AppHeader
-        title="Giỏ hàng"
-        showBack={true}
-        showCart={true}
-        rightAction={
-          !isEmpty
-            ? { label: "Xóa tất cả", onPress: handleClearCart }
-            : undefined
-        }
-      />
-
-      {isEmpty ? (
-        <EmptyCart />
-      ) : (
-        <FlatList
-          data={cartItems}
-          keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          renderItem={({ item }) => (
-            <CartItemCard
-              item={item}
-              onRemove={handleRemove}
-              onQuantityChange={handleQtyChange}
-            />
-          )}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-          ListFooterComponent={
-            <OrderSummary items={cartItems} onCheckout={handleCheckout} />
-          }
-        />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={MEKO_RED} />
+      <CartHeader itemCount={cartItems.length} onClear={handleClearCart} />
+      {isLoading && <View style={styles.loadingOverlay}><ActivityIndicator size="large" color={MEKO_RED} /></View>}
+      {cartItems.length === 0 ? <EmptyCart /> : (
+        <>
+          <FlatList data={listData} keyExtractor={(row, idx) => row.type === 'item' ? `item-${row.item.id}` : row.type === 'shopHeader' ? `shopH-${row.shopName}` : `${row.type}-${idx}`} renderItem={renderRow} showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent} removeClippedSubviews={Platform.OS === 'android'} />
+          <CheckoutBar onCheckout={handleCheckout} isAllSelected={isAllSelected} onToggleAll={handleToggleAll} />
+        </>
       )}
     </View>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-const THUMB_SIZE = 88;
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  listContent: {
-    paddingTop: Spacing.md,
-    paddingHorizontal: Spacing.layout.screenHorizontal,
-    paddingBottom: Spacing["3xl"],
-  },
-  separator: {
-    height: Spacing.md,
-  },
-
-  // ── Item card ────────────────────────────────────────────────
-  itemCard: {
-    marginBottom: Spacing[0],
-  },
-  itemContent: {
-    flexDirection: "row",
-    gap: Spacing.md,
-  },
-  itemThumb: {
-    width: THUMB_SIZE,
-    height: THUMB_SIZE,
-    borderRadius: Spacing.borderRadius.md,
-    overflow: "hidden",
-    position: "relative",
-  },
-  thumbImage: { 
-    width: "100%", 
-    height: "100%" 
-  },
-  thumbPlaceholder: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  discountBadge: {
-    position: "absolute",
-    top: Spacing.xs,
-    left: Spacing.xs,
-    paddingHorizontal: Spacing.xs,
-    paddingVertical: 2,
-    borderRadius: Spacing.borderRadius.sm,
-  },
-  discountBadgeText: {
-    color: Colors.neutral[0],
-    fontWeight: "bold",
-  },
-  itemInfo: {
-    flex: 1,
-    justifyContent: "space-between",
-  },
-  itemBrand: {
-    marginBottom: 2,
-    textTransform: "uppercase",
-  },
-  itemName: {
-    marginBottom: Spacing.xs,
-  },
-  itemPriceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-    marginBottom: Spacing.xs,
-  },
-  itemOriginalPrice: {
-    textDecorationLine: "line-through",
-  },
-  itemActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  qtyControl: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: Spacing.borderWidth.normal,
-    borderRadius: Spacing.borderRadius.md,
-    overflow: "hidden",
-  },
-  qtyBtn: {
-    width: Spacing[7],
-    height: 28,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  qtyBtnText: {
-    fontSize: 16,
-    fontWeight: "500",
-  },
-  qtyValue: {
-    minWidth: Spacing[7],
-    textAlign: "center",
-  },
-  removeBtn: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-  },
-
-  // ── Summary card ─────────────────────────────────────────────
-  summaryCard: {
-    marginTop: Spacing.md,
-  },
-  summaryTitle: {
-    marginBottom: Spacing.md,
-  },
-  summaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: Spacing.sm,
-  },
-  summaryDivider: {
-    marginVertical: Spacing.md,
-  },
-  checkoutBtn: {
-    marginTop: Spacing.lg,
-  },
-  continueBtn: {
-    marginTop: Spacing.md,
-  },
-
-  // ── Empty state ───────────────────────────────────────────────
-  emptyContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: Spacing.xl,
-  },
-  emptyIconContainer: {
-    marginBottom: Spacing.lg,
-  },
-  emptyTitle: {
-    marginBottom: Spacing.sm,
-    textAlign: "center",
-  },
-  emptyDesc: {
-    textAlign: "center",
-    marginBottom: Spacing.xl,
-  },
-  emptyAction: {
-    minWidth: 200,
-  },
+  container: { flex: 1, backgroundColor: Colors.background.tertiary },
+  loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.65)', zIndex: 999, justifyContent: 'center', alignItems: 'center' },
+  listContent: { paddingBottom: Spacing['3xl'] },
 });

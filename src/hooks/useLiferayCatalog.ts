@@ -1,11 +1,6 @@
 // src/hooks/useLiferayCatalog.ts
-import {
-  getCategories,
-  getProducts,
-  type LiferayCatalogProduct,
-  type LiferayCategory,
-  type LiferayProductList,
-} from '@/src/services/liferayService';
+import { getCategories, getProducts } from '@/src/services/liferay';
+import type { CatalogProduct, Category, ProductList } from '@/src/types/liferay';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface UseLiferayProductsOptions {
@@ -15,7 +10,7 @@ interface UseLiferayProductsOptions {
 }
 
 interface UseLiferayProductsReturn {
-  products: LiferayCatalogProduct[];
+  products: CatalogProduct[];
   loading: boolean;
   error: string | null;
   hasMore: boolean;
@@ -29,13 +24,14 @@ export function useLiferayProducts(
 ): UseLiferayProductsReturn {
   const { pageSize = 10, initialCategoryId, initialSearch = '' } = options;
   
-  const [products, setProducts] = useState<LiferayCatalogProduct[]>([]);
+  const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [search, setSearch] = useState(initialSearch);
   const [categoryId, setCategoryId] = useState<number | undefined>(initialCategoryId);
+  const [totalCount, setTotalCount] = useState(0);
   
   const isLoadingRef = useRef(false);
   const hasMoreRef = useRef(true);
@@ -64,18 +60,20 @@ export function useLiferayProducts(
         }
         
         console.log('Fetching products with params:', params);
-        const data: LiferayProductList = await getProducts(params);
+        const data: ProductList = await getProducts(params);
         
         const newProducts = data.items || [];
-        const totalCount = data.totalCount || 0;
+        const total = data.totalCount || 0;
         
         if (isLoadMore) {
           setProducts(prev => [...prev, ...newProducts]);
         } else {
           setProducts(newProducts);
+          setTotalCount(total);
         }
         
-        const more = newProducts.length === pageSize && products.length + newProducts.length < totalCount;
+        // Kiểm tra còn trang tiếp theo không
+        const more = page < data.lastPage;
         setHasMore(more);
         hasMoreRef.current = more;
         setCurrentPage(page);
@@ -106,6 +104,7 @@ export function useLiferayProducts(
       setProducts([]);
       setHasMore(true);
       hasMoreRef.current = true;
+      setTotalCount(0);
     },
     []
   );
@@ -120,6 +119,7 @@ export function useLiferayProducts(
 
   useEffect(() => {
     fetchProducts(1, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, categoryId]);
 
   return {
@@ -134,14 +134,14 @@ export function useLiferayProducts(
 }
 
 interface UseLiferayCategoriesReturn {
-  categories: LiferayCategory[];
+  categories: Category[];
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
 }
 
 export function useLiferayCategories(): UseLiferayCategoriesReturn {
-  const [categories, setCategories] = useState<LiferayCategory[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -149,7 +149,7 @@ export function useLiferayCategories(): UseLiferayCategoriesReturn {
     try {
       setLoading(true);
       const data = await getCategories();
-      setCategories(data.items || []);
+      setCategories(data);
       setError(null);
     } catch (err: any) {
       console.error('Error fetching categories:', err);

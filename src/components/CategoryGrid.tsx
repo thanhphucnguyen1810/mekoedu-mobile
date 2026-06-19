@@ -1,5 +1,10 @@
-import React from 'react';
+import { useLiferayCategories } from "@/src/hooks/useLiferayCatalog";
+import { Colors, Spacing, useTheme } from "@/src/theme";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { router } from "expo-router";
+import React from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Image,
   StyleSheet,
@@ -7,181 +12,244 @@ import {
   TouchableOpacity,
   View,
   useWindowDimensions,
-} from 'react-native';
+} from "react-native";
+import { AppConfig } from "../config/appConfig";
 
-import { useTheme } from '@/src/theme';
+const ROOT_PADDING = 0; 
+const VISUAL_PAD = 0; 
 
 export interface Category {
   id: string;
   name: string;
   imageUrl: string;
+  numberOfTaxonomyCategories?: number;
 }
 
 interface CategoryGridProps {
-  categories: readonly Category[];
+  categories?: readonly Category[];
   onCategoryPress?: (id: string) => void;
+  autoFetch?: boolean;
+  activeCategoryId?: string;
+  showAllOption?: boolean;
+  onAllPress?: () => void;
 }
 
-// Breakpoints cho responsive
-const BREAKPOINTS = {
-  phone: 480,
-  tablet: 768,
-  tabletLg: 1024,
-};
+const BREAKPOINTS = { phone: 480, tablet: 768, tabletLg: 1024 };
 
-function getVisibleItemCount(width: number): number {
+function getVisibleItemCount(width: number) {
   if (width >= BREAKPOINTS.tabletLg) return 8.5;
   if (width >= BREAKPOINTS.tablet) return 6.5;
   if (width >= BREAKPOINTS.phone) return 6.2;
   return 5.2;
 }
 
-function getIconBoxSize(width: number): number {
+function getIconBoxSize(width: number) {
   if (width >= BREAKPOINTS.tabletLg) return 64;
   if (width >= BREAKPOINTS.tablet) return 58;
   if (width >= BREAKPOINTS.phone) return 56;
   return 52;
 }
 
-function getLabelFontSize(width: number): number {
-  if (width >= BREAKPOINTS.tablet) return 12;
-  return 11;
-}
+const CategoryImage = ({
+  url, size, borderRadius, name, colors,
+}: {
+  url: string; size: number; borderRadius: number; name: string; colors: any;
+}) => {
+  const [hasError, setHasError] = React.useState(false);
+  const hasUrl = !!url && url.length > 0;
 
-export const CategoryGrid = ({ categories, onCategoryPress }: CategoryGridProps) => {
+  if (!hasUrl || hasError) {
+    return (
+      <View
+        style={[
+          styles.fallbackImage,
+          { width: size, height: size, borderRadius, backgroundColor: colors.primary[100] },
+        ]}
+      >
+        <Text style={{ color: colors.primary[500], fontSize: size * 0.38, fontWeight: "800" }}>
+          {(name?.[0] ?? "?").toUpperCase()}
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: url }}
+      style={{ width: size, height: size, borderRadius }}
+      resizeMode="cover"
+      onError={() => setHasError(true)}
+    />
+  );
+};
+
+export const CategoryGrid = ({
+  categories: propCategories,
+  onCategoryPress,
+  autoFetch = true,
+  activeCategoryId,
+  showAllOption = false,
+  onAllPress,
+}: CategoryGridProps) => {
   const { width: windowWidth } = useWindowDimensions();
-  
-  const { c, colors, radius, spacing, typography } = useTheme();
+  const { c, colors, typography } = useTheme();
+
+  const { categories: fetchedCategories, loading, error } = useLiferayCategories();
+
+  const rawCategories = propCategories ?? (autoFetch ? fetchedCategories : []);
+  const isLoading = autoFetch && !propCategories && loading;
+
+  const config = AppConfig.home.categories;
+
+  // Tính lại không gian thực sự bên trong (sau khi trừ ROOT_PADDING)
+  const availableWidth = windowWidth - (ROOT_PADDING * 2);
 
   const visibleCount = getVisibleItemCount(windowWidth);
   const iconBoxSize = getIconBoxSize(windowWidth);
-  const labelFontSize = getLabelFontSize(windowWidth);
-
-  const availableWidth = windowWidth - spacing.layout.screenHorizontal * 2;
+  const labelFontSize = windowWidth >= BREAKPOINTS.tablet ? 12 : 11;
+  
+  // Tính độ rộng của mỗi item
   const itemWidth = availableWidth / visibleCount;
 
-  const CategoryImage = ({ url, size, borderRadius }: { url: string; size: number; borderRadius: number }) => {
-    const [hasError, setHasError] = React.useState(false);
+  const handleCategoryPress = (categoryId: string, isAllButton: boolean = false) => {
+    if (isAllButton) {
+      // Nếu là nút "Tất cả"
+      if (onAllPress) {
+        onAllPress();
+      } else {
+        router.push("/category");
+      }
+    } else {
+      // Nếu là category bình thường
+      if (onCategoryPress) {
+        onCategoryPress(categoryId);
+      } else {
+        router.push(`/category/${categoryId}`);
+      }
+    }
+  };
 
-    if (!url || hasError) {
-      return (
+  if (isLoading) {
+    return (
+      <View style={[styles.loaderContainer]}>
+        <ActivityIndicator size="small" color={colors.primary[500]} />
+      </View>
+    );
+  }
+
+  if (error && !propCategories) {
+    return (
+      <View style={[styles.errorContainer]}>
+        <Text style={{ color: colors.error }}>{config.errorMessage}</Text>
+      </View>
+    );
+  }
+
+  let displayData: any[] = [...rawCategories];
+  if (showAllOption) {
+    displayData = [
+      { id: "ALL_CATEGORY_KEY", name: config.allLabel, imageUrl: "", isAllButton: true },
+      ...displayData,
+    ];
+  }
+
+  if (displayData.length === 0) return null;
+
+  const renderItem = ({ item }: { item: any }) => {
+    const isAllButton = item.isAllButton === true;
+    const isActive = isAllButton ? !activeCategoryId : String(item.id) === String(activeCategoryId);
+
+    const tileBackground = isAllButton ? colors.primary[500] : c.bgSoft;
+    const tileBorderColor = isAllButton ? "transparent" : isActive ? colors.primary[500] : c.border;
+    const tileBorderWidth = isAllButton ? 0 : isActive ? 2 : 1;
+    const tileRadius = 18;
+
+    return (
+      <TouchableOpacity
+        style={[styles.itemWrapper, { width: itemWidth }]}
+        onPress={() => handleCategoryPress(String(item.id), isAllButton)}
+        activeOpacity={0.7}
+      >
         <View
           style={[
-            styles.fallbackImage,
+            styles.tile,
             {
-              width: size,
-              height: size,
-              borderRadius,
-              backgroundColor: colors.neutral[200],
+              width: iconBoxSize,
+              height: iconBoxSize,
+              borderRadius: tileRadius,
+              backgroundColor: tileBackground,
+              borderColor: tileBorderColor,
+              borderWidth: tileBorderWidth,
             },
           ]}
         >
-          <Text style={{ color: colors.neutral[500], fontSize: size * 0.3 }}>
-            🖼️
-          </Text>
+          {isAllButton ? (
+            <MaterialCommunityIcons name="apps" size={iconBoxSize * 0.45} color="#FFFFFF" />
+          ) : (
+            <CategoryImage
+              url={item.imageUrl}
+              size={iconBoxSize - (isActive ? 4 : 0)}
+              borderRadius={tileRadius - 2}
+              name={item.name}
+              colors={colors}
+            />
+          )}
         </View>
-      );
-    }
 
-    return (
-      <Image
-        source={{ uri: url }}
-        style={[
-          styles.image,
-          {
-            width: size,
-            height: size,
-            borderRadius,
-          }
-        ]}
-        resizeMode="cover"
-        onError={() => setHasError(true)}
-      />
+        <Text
+          style={[
+            typography.variants.caption,
+            styles.label,
+            {
+              color: isActive ? colors.primary[500] : c.text,
+              fontSize: labelFontSize,
+              lineHeight: labelFontSize + 3,
+              fontWeight: isActive ? "700" : "500",
+              marginTop: Spacing.xs,
+            },
+          ]}
+          numberOfLines={2}
+        >
+          {item.name}
+        </Text>
+      </TouchableOpacity>
     );
   };
 
   return (
     <FlatList
-      data={categories}
-      keyExtractor={(item) => item.id}
+      data={displayData}
+      keyExtractor={(item) => String(item.id)}
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={[
-        { paddingVertical: spacing.xs }
-      ]}
+      ListHeaderComponent={() => <View style={{ width: VISUAL_PAD }} />}
+      ListFooterComponent={() => <View style={{ width: VISUAL_PAD }} />}
+      contentContainerStyle={{
+        paddingVertical: Spacing.sm,
+      }}
       snapToInterval={itemWidth}
       decelerationRate="fast"
-      renderItem={({ item }) => (
-        <TouchableOpacity
-          style={[styles.item, { width: itemWidth, gap: spacing.sm - 2 }]}
-          onPress={() => onCategoryPress?.(item.id)}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel={item.name}
-        >
-          <View
-            style={[
-              styles.imageBox,
-              {
-                width: iconBoxSize,
-                height: iconBoxSize,
-                borderRadius: radius.md,
-                backgroundColor: colors.primary[100],
-                shadowColor: colors.neutral[1000],
-              },
-            ]}
-          >
-            <CategoryImage 
-              url={item.imageUrl} 
-              size={iconBoxSize} 
-              borderRadius={radius.md}
-            />
-          </View>
-
-          <Text
-            style={[
-              typography.variants.caption,
-              styles.label,
-              {
-                color: c.text,
-                fontSize: labelFontSize,
-                lineHeight: labelFontSize + 3,
-                paddingHorizontal: spacing[1] / 2,
-              },
-            ]}
-            numberOfLines={2}
-          >
-            {item.name}
-          </Text>
-        </TouchableOpacity>
-      )}
+      renderItem={renderItem}
     />
   );
 };
 
+export default CategoryGrid;
+
 const styles = StyleSheet.create({
-  item: {
-    alignItems: 'center',
-  },
-  imageBox: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  itemWrapper: { alignItems: "center" },
+  tile: {
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+    shadowColor: Colors.neutral[950],
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
     shadowRadius: 3,
     elevation: 1,
-    overflow: 'hidden',
   },
-  image: {
-    // Style sẽ được override inline
-  },
-  fallbackImage: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  label: {
-    textAlign: 'center',
-    fontWeight: '500',
-    width: '100%',
-  },
+  fallbackImage: { alignItems: "center", justifyContent: "center" },
+  label: { textAlign: "center", width: "100%" },
+  loaderContainer: { alignItems: "center", justifyContent: "center", paddingVertical: 12 },
+  errorContainer: { alignItems: "center", justifyContent: "center", paddingVertical: 12 },
 });

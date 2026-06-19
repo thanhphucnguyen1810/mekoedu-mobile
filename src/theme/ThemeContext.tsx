@@ -18,10 +18,30 @@ export interface Theme {
   spacing: typeof Spacing;
   radius: Record<keyof typeof Radius, number>;
   typography: typeof Typography;
-  // shadows: typeof Shadows;
+  borderRadius: typeof borderRadius; // alias cho radius
+  borderWidth: typeof borderWidth;
   config: ThemeConfig;
   setThemeConfig: (config: Partial<ThemeConfig>) => void;
 }
+
+export const borderRadius = {
+  none: 0,
+  sm: 4,
+  md: 8,
+  lg: 12,
+  xl: 16,
+  '2xl': 24,
+  full: 9999,
+};
+
+export const borderWidth = {
+  none: 0,
+  hairline: 0.5,
+  thin: 1,
+  normal: 1.5,
+  thick: 2,
+  heavy: 3,
+};
 
 const defaultConfig: ThemeConfig = {
   mode: "light",
@@ -33,6 +53,8 @@ const defaultTheme: Theme = {
   c: C,
   spacing: Spacing,
   radius: Radius,
+  borderRadius: borderRadius,
+  borderWidth: borderWidth,
   typography: Typography,
   // shadows: Shadows,
   config: defaultConfig,
@@ -96,6 +118,8 @@ export const ThemeProvider: React.FC<{
       colors: dynamicColors,
       c: dynamicC,
       radius: dynamicRadius,
+      borderRadius: { ...borderRadius, md: config.borderRadius ?? borderRadius.md }, // giữ đồng bộ
+      borderWidth: borderWidth, 
       config,
       setThemeConfig: updateConfig,
     };
@@ -105,6 +129,7 @@ export const ThemeProvider: React.FC<{
     <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>
   );
 };
+
 
 // Hook to use theme
 export const useTheme = () => {

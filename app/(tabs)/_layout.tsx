@@ -2,9 +2,11 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 
 import { useTheme } from "../../src/theme";
+import { AppConfig } from "@/src/config/appConfig";
 
 export default function TabLayout() {
   const { c, typography } = useTheme();
+  const tabs = AppConfig.tabs;
 
   return (
     <Tabs
@@ -26,10 +28,10 @@ export default function TabLayout() {
       <Tabs.Screen
         name="home"
         options={{
-          title: 'Trang chủ',
+          title: tabs.home.label,
           tabBarIcon: ({ color }) => (
             <MaterialCommunityIcons
-              name="home-outline"
+              name={tabs.home.icon as any}
               size={24}
               color={color}
             />
@@ -41,10 +43,10 @@ export default function TabLayout() {
       <Tabs.Screen
         name="courses"
         options={{
-          title: 'Khóa học',
+          title: tabs.courses.label,
           tabBarIcon: ({ color }) => (
             <MaterialCommunityIcons
-              name="book-open-variant"
+              name={tabs.courses.icon as any}
               size={24}
               color={color}
             />
@@ -56,10 +58,10 @@ export default function TabLayout() {
       <Tabs.Screen
         name="exams"
         options={{
-          title: 'Thi',
+          title: tabs.exams.label,
           tabBarIcon: ({ color }) => (
             <MaterialCommunityIcons
-              name="file-document-edit-outline"
+              name={tabs.exams.icon as any}
               size={24}
               color={color}
             />
@@ -71,10 +73,10 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Tài khoản',
+          title: tabs.profile.label,
           tabBarIcon: ({ color }) => (
             <MaterialCommunityIcons
-              name="account-circle-outline"
+              name={tabs.profile.icon as any}
               size={24}
               color={color}
             />
