@@ -20,6 +20,8 @@ import {
 } from "react-native";
 import { useDispatch, useSelector } from "react-redux";
 import Toast from "react-native-toast-message";
+import { Image } from "react-native";
+import { AppConfig } from "@/src/config/appConfig";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -141,6 +143,9 @@ export default function RegisterScreen() {
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
+  const config = AppConfig.register;
+  const store = AppConfig.store;
+
   const [currentStep, setCurrentStep] = useState(0);
   const TOTAL = 3;
   const STEPS = ["Cá nhân", "Tài khoản", "Xác nhận"];
@@ -169,13 +174,8 @@ export default function RegisterScreen() {
   const showPwdReq = passwordFocused && form.password.length > 0;
   const confirmMatch = form.confirm === form.password && form.confirm.length > 0;
 
-  const toggleShowPassword = useCallback(() => {
-    setShowPassword(prev => !prev);
-  }, []);
-  
-  const toggleShowConfirm = useCallback(() => {
-    setShowConfirm(prev => !prev);
-  }, []);
+  const toggleShowPassword = useCallback(() => setShowPassword(prev => !prev), []);
+  const toggleShowConfirm = useCallback(() => setShowConfirm(prev => !prev), []);
 
   const set = (k: keyof typeof form) => (v: string) =>
     setForm((prev) => ({ ...prev, [k]: v }));
@@ -184,19 +184,17 @@ export default function RegisterScreen() {
     const errs: Partial<typeof form> = {};
 
     if (step === 0) {
-      if (!form.familyName.trim()) errs.familyName = "Vui lòng nhập họ";
-      if (!form.givenName.trim()) errs.givenName = "Vui lòng nhập tên";
+      if (!form.familyName.trim()) errs.familyName = config.errors.familyNameRequired;
+      if (!form.givenName.trim()) errs.givenName = config.errors.givenNameRequired;
     }
 
     if (step === 1) {
-      if (!form.email.includes("@")) errs.email = "Email không hợp lệ";
-      if (!isPasswordValid(form.password)) {
-        errs.password = "Mật khẩu chưa đủ yêu cầu";
-      }
+      if (!form.email.includes("@")) errs.email = config.errors.emailInvalid;
+      if (!isPasswordValid(form.password)) errs.password = config.errors.passwordWeak;
     }
 
     if (step === 2) {
-      if (form.confirm !== form.password) errs.confirm = "Mật khẩu không khớp";
+      if (form.confirm !== form.password) errs.confirm = config.errors.passwordMismatch;
     }
 
     setLocalErrors(errs);
@@ -253,17 +251,17 @@ export default function RegisterScreen() {
           <View>
             <View style={styles.sectionHeader}>
               <MaterialCommunityIcons name="account-outline" size={20} color={Colors.primary[500]} />
-              <Text style={styles.sectionTitle}>Thông tin cá nhân</Text>
+              <Text style={styles.sectionTitle}>{config.stepPersonalInfo}</Text>
             </View>
 
             <View style={styles.row}>
               <View style={[styles.field, { flex: 1.2 }]}>
-                <Text style={styles.label}>Họ</Text>
+                <Text style={styles.label}>{config.familyNameLabel}</Text>
                 <TextInput
                   style={[styles.input, localErrors.familyName && styles.inputErr]}
                   value={form.familyName}
                   onChangeText={set("familyName")}
-                  placeholder="Nguyễn"
+                  placeholder={config.familyNamePlaceholder}
                   autoCapitalize="words"
                   returnKeyType="next"
                   onSubmitEditing={() => givenNameRef.current?.focus()}
@@ -274,13 +272,13 @@ export default function RegisterScreen() {
               </View>
 
               <View style={[styles.field, { flex: 1 }]}>
-                <Text style={styles.label}>Tên</Text>
+                <Text style={styles.label}>{config.givenNameLabel}</Text>
                 <TextInput
                   ref={givenNameRef}
                   style={[styles.input, localErrors.givenName && styles.inputErr]}
                   value={form.givenName}
                   onChangeText={set("givenName")}
-                  placeholder="An"
+                  placeholder={config.givenNamePlaceholder}
                   autoCapitalize="words"
                   returnKeyType="done"
                   onSubmitEditing={handleNext}
@@ -297,11 +295,11 @@ export default function RegisterScreen() {
           <View>
             <View style={styles.sectionHeader}>
               <MaterialCommunityIcons name="shield-lock-outline" size={20} color={Colors.primary[500]} />
-              <Text style={styles.sectionTitle}>Thông tin tài khoản</Text>
+              <Text style={styles.sectionTitle}>{config.stepAccountInfo}</Text>
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>Email</Text>
+              <Text style={styles.label}>{config.emailLabel}</Text>
               <View style={styles.passwordRow}>
                 <Ionicons name="mail-outline" size={18} color={theme.c.textSub} style={styles.inputIconLeft} />
                 <TextInput
@@ -309,7 +307,7 @@ export default function RegisterScreen() {
                   style={[styles.input, styles.inputWithIcon, localErrors.email && styles.inputErr]}
                   value={form.email}
                   onChangeText={set("email")}
-                  placeholder="ten@example.com"
+                  placeholder={config.emailPlaceholder}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   returnKeyType="next"
@@ -322,7 +320,7 @@ export default function RegisterScreen() {
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>Mật khẩu</Text>
+              <Text style={styles.label}>{config.passwordLabel}</Text>
               <View style={styles.passwordRow}>
                 <Ionicons name="lock-closed-outline" size={18} color={theme.c.textSub} style={styles.inputIconLeft} />
                 <TextInput
@@ -330,7 +328,7 @@ export default function RegisterScreen() {
                   style={[styles.input, styles.inputWithIcon, localErrors.password && styles.inputErr]}
                   value={form.password}
                   onChangeText={set("password")}
-                  placeholder="••••••••"
+                  placeholder={config.passwordPlaceholder}
                   secureTextEntry={!showPassword}
                   returnKeyType="next"
                   onFocus={() => setPasswordFocused(true)}
@@ -354,10 +352,10 @@ export default function RegisterScreen() {
 
               {showPwdReq && (
                 <View style={styles.requirements}>
-                  <RequirementItem text="8 ký tự trở lên" valid={pwdValid.length} />
-                  <RequirementItem text="Ít nhất 1 ký tự đặc biệt" valid={pwdValid.special} />
-                  <RequirementItem text="Ít nhất 1 chữ hoa" valid={pwdValid.upper} />
-                  <RequirementItem text="Ít nhất 1 chữ số" valid={pwdValid.number} />
+                  <RequirementItem text={config.passwordRequirements.length} valid={pwdValid.length} />
+                  <RequirementItem text={config.passwordRequirements.special} valid={pwdValid.special} />
+                  <RequirementItem text={config.passwordRequirements.upper} valid={pwdValid.upper} />
+                  <RequirementItem text={config.passwordRequirements.number} valid={pwdValid.number} />
                 </View>
               )}
             </View>
@@ -369,11 +367,11 @@ export default function RegisterScreen() {
           <View>
             <View style={styles.sectionHeader}>
               <MaterialCommunityIcons name="check-decagram-outline" size={20} color={Colors.primary[500]} />
-              <Text style={styles.sectionTitle}>Xác nhận thông tin</Text>
+              <Text style={styles.sectionTitle}>{config.stepConfirmInfo}</Text>
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>Xác nhận mật khẩu</Text>
+              <Text style={styles.label}>{config.confirmPasswordLabel}</Text>
               <View style={styles.passwordRow}>
                 <Ionicons name="lock-closed-outline" size={18} color={theme.c.textSub} style={styles.inputIconLeft} />
                 <TextInput
@@ -381,7 +379,7 @@ export default function RegisterScreen() {
                   style={[styles.input, styles.inputWithIcon, localErrors.confirm && styles.inputErr]}
                   value={form.confirm}
                   onChangeText={set("confirm")}
-                  placeholder="••••••••"
+                  placeholder={config.confirmPasswordPlaceholder}
                   secureTextEntry={!showConfirm}
                   returnKeyType="done"
                   onFocus={() => setConfirmFocused(true)}
@@ -405,38 +403,29 @@ export default function RegisterScreen() {
 
               {confirmFocused && form.confirm.length > 0 && (
                 <View style={styles.requirements}>
-                  <RequirementItem
-                    text={confirmMatch ? "Mật khẩu khớp" : "Mật khẩu chưa khớp"}
-                    valid={confirmMatch}
-                  />
+                  <RequirementItem text={confirmMatch ? config.confirmMatchText : config.confirmNotMatchText} valid={confirmMatch} />
                 </View>
               )}
             </View>
 
             <View style={styles.reviewCard}>
-              <Text style={styles.reviewTitle}>Thông tin đăng ký</Text>
+              <Text style={styles.reviewTitle}>{config.reviewTitle}</Text>
               <View style={styles.reviewDivider} />
               <View style={{ gap: 8 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                   <Ionicons name="person-outline" size={16} color={Colors.primary[400]} />
-                  <Text style={{ fontSize: 13, color: theme.c.textSub, width: 90 }}>Họ và tên</Text>
-                  <Text style={{ fontSize: 13, color: theme.c.text, fontWeight: "500", flex: 1 }} numberOfLines={1}>
-                    {form.familyName} {form.givenName}
-                  </Text>
+                  <Text style={styles.reviewLabel}>{config.nameLabel}</Text>
+                  <Text style={styles.reviewValue}>{form.familyName} {form.givenName}</Text>
                 </View>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                   <Ionicons name="mail-outline" size={16} color={Colors.primary[400]} />
-                  <Text style={{ fontSize: 13, color: theme.c.textSub, width: 90 }}>Email</Text>
-                  <Text style={{ fontSize: 13, color: theme.c.text, fontWeight: "500", flex: 1 }} numberOfLines={1}>
-                    {form.email}
-                  </Text>
+                  <Text style={styles.reviewLabel}>{config.emailLabel}</Text>
+                  <Text style={styles.reviewValue}>{form.email}</Text>
                 </View>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                   <Ionicons name="shield-checkmark-outline" size={16} color={Colors.primary[400]} />
-                  <Text style={{ fontSize: 13, color: theme.c.textSub, width: 90 }}>Bảo mật</Text>
-                  <Text style={{ fontSize: 13, color: Colors.success, fontWeight: "500", flex: 1 }}>
-                    Mật khẩu đã thiết lập
-                  </Text>
+                  <Text style={styles.reviewLabel}>Bảo mật</Text>
+                  <Text style={[styles.reviewValue, { color: Colors.success }]}>{config.securityStatus}</Text>
                 </View>
               </View>
             </View>
@@ -459,16 +448,13 @@ export default function RegisterScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Logo - ĐỒNG NHẤT VỚI LOGIN */}
-        <View style={styles.logoGroup}>
-          <View style={styles.logoBadge}>
-            <Text style={styles.logoLetter}>M</Text>
-          </View>
-          <Text style={styles.logoText}>MekoEdu</Text>
+        {/* Logo */}
+        <View style={styles.logoContainer}>
+          <Image source={store.logo} style={styles.logoImage} resizeMode="contain" />
         </View>
 
-        <Text style={styles.title}>Tạo tài khoản</Text>
-        <Text style={styles.sub}>Đăng ký để bắt đầu hành trình học tập</Text>
+        <Text style={styles.title}>{config.title}</Text>
+        <Text style={styles.sub}>{config.subTitle}</Text>
 
         <StepIndicator currentStep={currentStep} totalSteps={TOTAL} steps={STEPS} />
 
@@ -481,61 +467,36 @@ export default function RegisterScreen() {
 
         {renderStep()}
 
-        {/* Navigation buttons - SỬ DỤNG AppButton ĐỒNG NHẤT VỚI LOGIN */}
+        {/* Navigation buttons */}
         <View style={styles.navRow}>
           {currentStep > 0 && (
             <View style={styles.buttonWrapper}>
-              <AppButton
-                title="Quay lại"
-                onPress={handleBack}
-                variant="secondary"
-                icon="arrow-back-outline"
-                iconPosition="left"
-                fullWidth
-              />
+              <AppButton title={config.stepBackButton} onPress={handleBack} variant="secondary" icon="arrow-back-outline" iconPosition="left" fullWidth />
             </View>
           )}
 
-          <View style={[
-            styles.buttonWrapper,
-            currentStep === 0 && styles.buttonWrapperFull
-          ]}>
+          <View style={[styles.buttonWrapper, currentStep === 0 && styles.buttonWrapperFull]}>
             {currentStep < TOTAL - 1 ? (
-              <AppButton
-                icon="arrow-forward-outline"
-                iconPosition="right"
-                title="Tiếp theo"
-                onPress={handleNext}
-                variant="primary"
-                fullWidth
-              />
+              <AppButton icon="arrow-forward-outline" iconPosition="right" title={config.stepNextButton} onPress={handleNext} variant="primary" fullWidth />
             ) : (
-              <AppButton
-                title={loading ? "Đang xử lý..." : "Đăng ký"}
-                onPress={handleRegister}
-                disabled={loading}
-                variant="primary"
-                icon="checkmark-outline"
-                iconPosition="left"
-                loading={loading}
-                fullWidth
-              />
+              <AppButton title={loading ? config.registerButtonLoading : config.registerButton} onPress={handleRegister} disabled={loading} variant="primary" icon="checkmark-outline" iconPosition="left" loading={loading} fullWidth />
             )}
           </View>
         </View>
 
         <Text style={styles.termsText}>
-          Bằng cách tiếp tục, bạn đồng ý với{" "}
-          <Text style={styles.termsLink}>Điều khoản</Text>
+          {config.termsPrefix}
+          <Text style={styles.termsLink}>{config.termsLink1}</Text>
           {" & "}
-          <Text style={styles.termsLink}>Chính sách bảo mật</Text> của MekoEdu.
+          <Text style={styles.termsLink}>{config.termsLink2}</Text>
+          {config.termsSuffix}
         </Text>
 
         <View style={styles.switchRow}>
-          <Text style={styles.switchText}>Đã có tài khoản? </Text>
+          <Text style={styles.switchText}>{config.haveAccount}</Text>
           <Link href="/(auth)/login" asChild>
             <TouchableOpacity activeOpacity={0.7}>
-              <Text style={styles.switchLink}>Đăng nhập</Text>
+              <Text style={styles.switchLink}>{config.loginLink}</Text>
             </TouchableOpacity>
           </Link>
         </View>
@@ -546,7 +507,7 @@ export default function RegisterScreen() {
   );
 }
 
-// ─── Styles - ĐỒNG NHẤT VỚI LOGIN ─────────────────────────────────────────────
+// ─── Styles ─────────────────────────────────────────────
 
 const inputShadow = Platform.select({
   ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3 },
@@ -694,6 +655,8 @@ const createStyles = (theme: ReturnType<typeof useTheme>) =>
       backgroundColor: Colors.neutral[200],
       marginBottom: theme.spacing[3],
     },
+    reviewLabel: { fontSize: 13, color: theme.c.textSub, width: 90 },
+    reviewValue: { fontSize: 13, color: theme.c.text, fontWeight: "500", flex: 1 },
 
     navRow: {
       flexDirection: "row",
@@ -718,4 +681,15 @@ const createStyles = (theme: ReturnType<typeof useTheme>) =>
     switchRow: { flexDirection: "row", justifyContent: "center", alignItems: "center" },
     switchText: { fontSize: 14, color: theme.c.textSub },
     switchLink: { fontSize: 14, fontWeight: "700", color: Colors.primary[500] },
+
+        logoContainer: {
+      alignItems: "center",
+      marginBottom: theme.spacing[8], // tăng khoảng cách dưới logo
+    },
+
+    logoImage: {
+      width: 300,
+      height: 100,
+    },
+    
   });

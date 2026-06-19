@@ -1,186 +1,156 @@
 // src/components/CourseCard/index.tsx
 import { useCartSync } from '@/src/hooks/useCartSync';
-import type { LiferayCatalogProduct } from '@/src/services/liferayService';
-import { useTheme } from '@/src/theme';
+import { useFlyToCart } from '@/src/hooks/useFlyToCart';
+import { Colors, Spacing, useTheme } from '@/src/theme';
+import type { CatalogProduct } from '@/src/types/liferay';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { AppConfig } from '@/src/config/appConfig';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 
-interface CourseCardProps {
-  course: LiferayCatalogProduct;
-  onPress?: () => void;
-  showAddToCartToast?: boolean;
+// ─── Types ────────────────────────────────────────────────────────────────
+export interface FlyRef {
+  triggerFly: (sourceRect: { x: number; y: number; width: number; height: number }) => void;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+interface CourseCardProps {
+  course: CatalogProduct;
+  onPress?: () => void;
+  flyRef?: React.RefObject<FlyRef>;
+}
 
+// ─── Helpers ────────────────────────────────────────────────────────────────
 const fmtPrice = (sku: any) => {
   const p = sku?.price?.price ?? 0;
   return p === 0 ? 'Miễn phí' : p.toLocaleString('vi-VN') + 'đ';
 };
-
-const getRawPrice   = (sku: any): number => sku?.price?.price ?? 0;
+const getRawPrice = (sku: any): number => sku?.price?.price ?? 0;
 const getPromoPrice = (sku: any): number | undefined => {
-  const p  = sku?.price?.price ?? 0;
+  const p = sku?.price?.price ?? 0;
   const pp = sku?.price?.promoPrice;
   return pp && pp > 0 && pp < p ? pp : undefined;
 };
+const getImageUrl = (course: CatalogProduct) => {
+  const firstImage = course.images?.[0];
+  if (!firstImage) return '';
+  if (typeof firstImage === 'string') return firstImage;
+  return firstImage.src ?? firstImage.url ?? '';
+};
 
-const getSpec = (course: LiferayCatalogProduct, key: string): string | undefined =>
-  course.productSpecifications?.find((s: any) => s.specificationKey === key)?.value;
+const MEKO_RED = Colors.primary[500];
 
-const getImageUrl = (course: LiferayCatalogProduct): string =>
-  course.images?.[0]?.src ?? course.images?.[0]?.url ?? '';
+const LogoOverlay = () => {
+  const logo = AppConfig.store.logo;
+  return (
+    <View>
+      <Image
+        source={logo}
+        style={styles.logoImage}
+        resizeMode="contain"
+      />
+    </View>
+  );
+};
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
-export const CourseCard: React.FC<CourseCardProps> = ({
-  course,
-  onPress,
-  showAddToCartToast = true,
-}) => {
+// ─── CourseCard ───────────────────────────────────────────────────────────
+export const CourseCard: React.FC<CourseCardProps> = ({ course, onPress }) => {
   const { c, radius } = useTheme();
-  const router = useRouter();
   const { addToCartAsync } = useCartSync();
+  const { flyFrom } = useFlyToCart();
+  const cartBtnRef = useRef<View>(null);
 
   const [imgError, setImgError] = useState(false);
   const [imgLoading, setImgLoad] = useState(true);
-  const [adding, setAdding]     = useState(false);
+  const [isAddingCart, setIsAddingCart] = useState(false);
+  const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const sku      = course.skus?.[0];
-  const price    = fmtPrice(sku);
-  const raw      = getRawPrice(sku);
-  const promo    = getPromoPrice(sku);
-  const duration = getSpec(course, 'duration') ?? 'Chưa cập nhật';
-  const lessons  = parseInt(getSpec(course, 'lesson-count') ?? '0', 10);
+  const sku = course.skus?.[0];
+  const raw = getRawPrice(sku);
+  const promo = getPromoPrice(sku);
+  const price = fmtPrice(sku);
   const imageUrl = getImageUrl(course);
-  const brand    = course.catalogName ?? 'MekoEdu';
   const skuId = (sku as any)?.skuId ?? (sku as any)?.id ?? 0;
+  const hasDiscount = promo != null && promo < raw;
+  const pct = hasDiscount ? Math.round((1 - promo! / raw) * 100) : 0;
 
+  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setActiveToastMsg({ text, type });
+    toastTimer.current = setTimeout(() => setToastMsg(null), 2200);
+  };
 
-  // ── Thêm vào giỏ ────────────────────────────────────────────────────────
+  const setActiveToastMsg = (msg: { text: string; type: 'success' | 'error' } | null) => {
+    setToastMsg(msg);
+  };
+
   const handleAddToCart = async () => {
-    if (adding) return;
-    setAdding(true);
+    if (isAddingCart) return;
+    setIsAddingCart(true);
 
     const payload = {
-      productId:   course.id,
-      skuId,                   // ← skuId (number), không phải sku code string
-      quantity:    1,
-      name:        course.name,
-      price:       raw,
-      promoPrice:  promo,
-      thumbnail:   imageUrl,
+      productId: course.id,
+      skuId,
+      quantity: 1,
+      name: course.name,
+      price: raw,
+      promoPrice: promo,
+      thumbnail: imageUrl,
       catalogName: course.catalogName,
     };
 
-    console.log("🛒 [CourseCard] Bắt đầu thêm vào giỏ hàng với dữ liệu:", JSON.stringify(payload, null, 2));
-
     try {
       const cartItemId = await addToCartAsync(payload);
-      console.log("📥 [CourseCard] Kết quả phản hồi từ addToCartAsync:", cartItemId);
-
-      if (cartItemId && showAddToCartToast) {
-        Alert.alert(
-          'Thành công',
-          `Đã thêm "${course.name}" vào giỏ hàng`,
-          [
-            { text: 'Tiếp tục mua', style: 'cancel' },
-            { text: 'Xem giỏ hàng', onPress: () => router.push('/cart') },
-          ]
-        );
-      } else if (!cartItemId) {
-        console.error("❌ [CourseCard] Lỗi: Hàm cho ra kết quả rỗng (falsy). Kiểm tra lại logic bên trong useCartSync hook.");
-        Alert.alert(
-          '❌ Thất bại',
-          `Không thể thêm vào giỏ hàng.\n\nChi tiết: Hàm 'addToCartAsync' trả về [${cartItemId}]. Vui lòng kiểm tra log hệ thống hoặc token.`
-        );
-      }
-    } catch (error: any) {
-      console.error("💥 [CourseCard] Exception crash xuất hiện trong handleAddToCart:", error);
-      Alert.alert(
-        '💥 Lỗi hệ thống',
-        `Đã xảy ra lỗi nghiêm trọng:\n${error?.message || 'Không rõ nguyên nhân'}`
-      );
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  // ── Mua ngay ─────────────────────────────────────────────────────────────
-  const handleBuyNow = async () => {
-    if (raw === 0) {
-      onPress?.();
-      return;
-    }
-    if (adding) return;
-    setAdding(true);
-
-    const payload = {
-      productId:   course.id,
-      skuId,                   // ← skuId (number), không phải sku code string
-      quantity:    1,
-      name:        course.name,
-      price:       raw,
-      promoPrice:  promo,
-      thumbnail:   imageUrl,
-      catalogName: course.catalogName,
-    };
-
-    console.log("🚀 [CourseCard] Bắt đầu xử lý Mua ngay với dữ liệu:", JSON.stringify(payload, null, 2));
-
-    try {
-      const cartItemId = await addToCartAsync(payload);
-      console.log("📥 [CourseCard] Kết quả phản hồi Mua ngay:", cartItemId);
-
       if (cartItemId) {
-        router.push('/cart/checkout');
+        cartBtnRef.current?.measureInWindow((x, y, width, height) => {
+          const origin = { x: x + width / 2, y: y + height / 2 };
+          flyFrom(origin, MEKO_RED, imageUrl);
+        });
+        showToast('Đã thêm vào giỏ hàng', 'success');
       } else {
-        console.error("❌ [CourseCard] Lỗi: Mua ngay không nhận được ID sản phẩm trong giỏ.");
-        Alert.alert(
-          '❌ Lỗi',
-          `Không thể xử lý mua ngay.\n\nChi tiết: 'addToCartAsync' trả về [${cartItemId}].`
-        );
+        showToast('Không thể thêm vào giỏ', 'error');
       }
     } catch (error: any) {
-      console.error("💥 [CourseCard] Exception crash xuất hiện trong handleBuyNow:", error);
-      Alert.alert(
-        '💥 Lỗi hệ thống',
-        `Không thể mua ngay lập tức:\n${error?.message || 'Chưa rõ lỗi'}`
-      );
+      showToast(error?.message ?? 'Đã xảy ra lỗi', 'error');
     } finally {
-      setAdding(false);
+      setIsAddingCart(false);
     }
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <TouchableOpacity
       style={[
         styles.card,
-        { backgroundColor: c.bg, borderRadius: radius.lg, borderColor: c.border },
+        {
+          backgroundColor: c.bg,
+          borderRadius: radius.lg,
+        },
       ]}
       onPress={onPress}
-      activeOpacity={0.9}
+      activeOpacity={0.92}
     >
-      {/* Image */}
-      <View style={styles.imgWrap}>
+      {/* ── Thumbnail + Logo overlay ── */}
+      <View
+        style={[
+          styles.imgWrap,
+          { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg },
+        ]}
+      >
+        {/* Skeleton loader */}
         {imgLoading && (
-          <View style={[styles.imgLoader, { backgroundColor: c.border }]}>
-            <ActivityIndicator size="small" color={c.primary} />
+          <View style={[styles.imgLoader, { backgroundColor: Colors.neutral[100] }]}>
+            <ActivityIndicator size="small" color={MEKO_RED} />
           </View>
         )}
+
         {!imgError ? (
           <Image
             source={{ uri: imageUrl }}
@@ -195,141 +165,247 @@ export const CourseCard: React.FC<CourseCardProps> = ({
             resizeMode="cover"
             onLoadStart={() => setImgLoad(true)}
             onLoadEnd={() => setImgLoad(false)}
-            onError={() => { setImgError(true); setImgLoad(false); }}
+            onError={() => {
+              setImgError(true);
+              setImgLoad(false);
+            }}
           />
         ) : (
-          <View style={[styles.imgPlaceholder, { backgroundColor: c.border }]}>
-            <MaterialCommunityIcons name="image-off" size={40} color={c.textSub} />
+          <View
+            style={[
+              styles.imgPlaceholder,
+              {
+                backgroundColor: Colors.primary[50],
+                borderTopLeftRadius: radius.lg,
+                borderTopRightRadius: radius.lg,
+              },
+            ]}
+          >
+            <MaterialCommunityIcons name="image-off" size={36} color={Colors.primary[200]} />
           </View>
         )}
 
+        {/* Free badge – góc trên phải */}
         {raw === 0 && (
-          <View style={[styles.badge, { backgroundColor: c.success ?? '#10b981', top: 8, right: 8 }]}>
-            <Text style={styles.badgeText}>Miễn phí</Text>
-          </View>
-        )}
-        {promo != null && promo < raw && (
-          <View style={[styles.badge, { backgroundColor: c.error ?? '#ef4444', top: 8, right: 8 }]}>
-            <Text style={styles.badgeText}>-{Math.round((1 - promo / raw) * 100)}%</Text>
+          <View style={[styles.freeBadge, { backgroundColor: Colors.success }]}>
+            <Text style={styles.freeBadgeText}>{AppConfig.courseCard.freeBadgeText}</Text>
           </View>
         )}
       </View>
 
-      {/* Content */}
+      {/* ── Nội dung ── */}
       <View style={styles.content}>
-        {/* Brand */}
-        <View style={styles.brandRow}>
-          <View style={[styles.brandLogo, { backgroundColor: c.primary + '20' }]}>
-            <Text style={[styles.brandLogoChar, { color: c.primary }]}>
-              {(brand[0] ?? 'M').toUpperCase()}
-            </Text>
-          </View>
-          <Text style={[styles.brandName, { color: c.textSub }]} numberOfLines={1}>
-            {brand}
-          </Text>
-        </View>
-
         <Text style={[styles.title, { color: c.text }]} numberOfLines={2}>
           {course.name}
         </Text>
 
-        {/* Stats */}
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <Ionicons name="time-outline" size={12} color={c.textSub} />
-            <Text style={[styles.statText, { color: c.textSub }]}>{duration}</Text>
-          </View>
-          <View style={styles.statItem}>
-            <MaterialCommunityIcons name="book-open-outline" size={12} color={c.textSub} />
-            <Text style={[styles.statText, { color: c.textSub }]}>{lessons} bài</Text>
-          </View>
-        </View>
-
-        {/* Rating */}
-        <View style={styles.ratingRow}>
-          <Ionicons name="star" size={12} color="#FFD700" />
-          <Text style={[styles.ratingVal, { color: c.text }]}>4.5</Text>
-          <Text style={[styles.reviewCount, { color: c.textSub }]}>(0)</Text>
-        </View>
-
-        {/* Price */}
-        <View style={styles.priceRow}>
-          {promo != null && promo < raw ? (
-            <>
-              <Text style={[styles.price, { color: c.error ?? '#ef4444' }]}>
-                {promo.toLocaleString('vi-VN')}đ
+        <View style={styles.bottomRow}>
+          <View style={styles.priceBlock}>
+            {hasDiscount ? (
+              <>
+                <Text style={[styles.priceCurrent, { color: MEKO_RED }]} numberOfLines={1}>
+                  {promo!.toLocaleString('vi-VN')}đ
+                </Text>
+                <View style={styles.originalRow}>
+                  <Text style={[styles.priceOriginal, { color: c.textSub }]} numberOfLines={1}>
+                    {raw.toLocaleString('vi-VN')}đ
+                  </Text>
+                  <View style={styles.discountChip}>
+                    <Text style={styles.discountChipText}>-{pct}%</Text>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <Text
+                style={[
+                  styles.priceCurrent,
+                  { color: raw === 0 ? Colors.success : MEKO_RED },
+                ]}
+                numberOfLines={1}
+              >
+                {price}
               </Text>
-              <Text style={[styles.originalPrice, { color: c.textSub }]}>
-                {raw.toLocaleString('vi-VN')}đ
-              </Text>
-            </>
-          ) : (
-            <Text style={[styles.price, { color: c.primary }]}>{price}</Text>
-          )}
-        </View>
+            )}
+          </View>
 
-        {/* Buttons */}
-        <View style={styles.btnRow}>
+          {/* Nút + thêm giỏ hàng */}
           {raw > 0 && (
-            <TouchableOpacity
-              style={[styles.cartBtn, { borderColor: c.border }, adding && styles.disabled]}
-              onPress={handleAddToCart}
-              disabled={adding}
-            >
-              {adding ? (
-                <ActivityIndicator size="small" color={c.primary} />
-              ) : (
-                <Ionicons name="cart-outline" size={16} color={c.primary} />
-              )}
-            </TouchableOpacity>
+            <View ref={cartBtnRef} collapsable={false} style={styles.plusBtnContainer}>
+              <TouchableOpacity
+                style={[styles.plusBtn, { backgroundColor: MEKO_RED }]}
+                onPress={handleAddToCart}
+                disabled={isAddingCart}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                {isAddingCart ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Ionicons name="add" size={20} color="#fff" />
+                )}
+              </TouchableOpacity>
+            </View>
           )}
-          <TouchableOpacity
-            style={[
-              styles.buyBtn,
-              { backgroundColor: raw === 0 ? (c.success ?? '#10b981') : c.primary },
-              adding && styles.disabled,
-            ]}
-            onPress={handleBuyNow}
-            disabled={adding}
-          >
-            <Text style={styles.buyBtnText}>{raw === 0 ? 'Học ngay' : 'Mua ngay'}</Text>
-          </TouchableOpacity>
         </View>
       </View>
+
+      {/* Toast nhẹ bên trong card */}
+      {toastMsg && (
+        <View
+          style={[
+            styles.toast,
+            {
+              backgroundColor:
+                toastMsg.type === 'success'
+                  ? 'rgba(16,185,129,0.95)'
+                  : 'rgba(239,68,68,0.95)',
+            },
+          ]}
+        >
+          <Ionicons
+            name={toastMsg.type === 'success' ? 'checkmark-circle' : 'close-circle'}
+            size={13}
+            color="#fff"
+          />
+          <Text style={styles.toastText}>{toastMsg.text}</Text>
+        </View>
+      )}
     </TouchableOpacity>
   );
 };
 
 export default CourseCard;
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
+// ─── Styles ────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  card:           { borderWidth: 1, overflow: 'hidden' },
-  imgWrap:        { position: 'relative', width: '100%', height: 160, backgroundColor: '#f0f0f0' },
-  img:            { width: '100%', height: '100%' },
-  imgLoader:      { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', zIndex: 1 },
-  imgPlaceholder: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', zIndex: 2 },
-  badge:          { position: 'absolute', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, zIndex: 3 },
-  badgeText:      { color: '#fff', fontSize: 10, fontWeight: 'bold' },
-  disabled:       { opacity: 0.6 },
-  content:        { padding: 12 },
-  brandRow:       { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  brandLogo:      { width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginRight: 6 },
-  brandLogoChar:  { fontSize: 10, fontWeight: 'bold' },
-  brandName:      { fontSize: 11, flex: 1 },
-  title:          { fontSize: 14, fontWeight: '600', marginBottom: 8, lineHeight: 18 },
-  statsRow:       { flexDirection: 'row', marginBottom: 8, gap: 12 },
-  statItem:       { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  statText:       { fontSize: 11 },
-  ratingRow:      { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  ratingVal:      { fontSize: 12, fontWeight: '600', marginHorizontal: 4 },
-  reviewCount:    { fontSize: 11 },
-  priceRow:       { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  price:          { fontSize: 16, fontWeight: 'bold' },
-  originalPrice:  { fontSize: 12, textDecorationLine: 'line-through' },
-  btnRow:         { flexDirection: 'row', gap: 8 },
-  cartBtn:        { flex: 1, borderWidth: 1, borderRadius: 8, paddingVertical: 8, alignItems: 'center', justifyContent: 'center', minHeight: 36 },
-  buyBtn:         { flex: 2, borderRadius: 8, paddingVertical: 8, alignItems: 'center', justifyContent: 'center' },
-  buyBtnText:     { color: '#fff', fontSize: 13, fontWeight: '600' },
+  card: {
+    flex: 1,                  
+    minHeight: 220,             
+    // Đã xóa hoàn toàn margin: 4 để tránh xung đột tính toán kích thước chiều ngang với layout cha
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+    overflow: 'hidden', // Bo tròn khít góc tránh nội dung con tràn ra ngoài
+  },
+
+  imgWrap: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    position: 'relative',
+    backgroundColor: Colors.neutral[100],
+    overflow: 'hidden',
+  },
+  img: { width: '100%', height: '100%' },
+  imgLoader: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imgPlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  freeBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderBottomLeftRadius: Spacing.borderRadius.sm,
+  },
+  freeBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+
+  content: {
+    flex: 1,
+    paddingTop: 8,
+    paddingHorizontal: 10, // Co nhẹ lề 2 bên để tăng diện tích hiển thị text cho 2 cột
+    paddingBottom: 10,
+  },
+  title: {
+    fontSize: 13, // Giảm nhẹ xuống 13 để cân đối hài hòa trên màn hình nhỏ hiển thị 2 cột
+    fontWeight: '600',
+    lineHeight: 18,
+    minHeight: 36, 
+    flexShrink: 1,              
+  },
+
+  bottomRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end', // Căn chân đều theo trục dọc cho cân đối với nút bấm
+    justifyContent: 'space-between',
+    marginTop: 'auto',
+    gap: 4,
+  },
+  priceBlock: {
+    flex: 1,
+    gap: 1,
+  },
+  priceCurrent: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  originalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap', // Tự động rớt dòng thông minh khi tên mệnh giá tiền quá dài ở màn hình hẹp
+    gap: 4,
+  },
+  priceOriginal: {
+    fontSize: 11,
+    textDecorationLine: 'line-through',
+  },
+  discountChip: {
+    backgroundColor: Colors.error + '12',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 3,
+  },
+  discountChipText: {
+    color: Colors.error,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+
+  plusBtnContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  plusBtn: {
+    width: 34, // Tinh chỉnh kích cỡ vàng 34x34px tối ưu nút bấm cho 2 sản phẩm/hàng
+    height: 34,
+    borderRadius: 17,
+    justifyContent: 'center',
+    alignItems: 'center',
+    // Đổ bóng màu đỏ cao cấp và có chiều sâu
+    shadowColor: MEKO_RED,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+
+  logoImage: {
+    width: AppConfig.courseCard.logoWidth || 28,
+    height: AppConfig.courseCard.logoHeight || 28,
+  },
+
+  toast: {
+    position: 'absolute',
+    bottom: 50,
+    left: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    zIndex: 20,
+  },
+  toastText: { color: '#fff', fontSize: 11, fontWeight: '600' },
 });

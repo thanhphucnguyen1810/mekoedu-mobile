@@ -1,5 +1,7 @@
 // app/(auth)/login.tsx
 import { AppButton } from "@/src/components/common";
+import { AppConfig } from "@/src/config/appConfig";
+import { useCartSync } from "@/src/hooks/useCartSync";
 import type { AppDispatch, RootState } from "@/src/store";
 import { liferayLogin } from "@/src/store/slices/liferayAuthSlice";
 import { useTheme } from "@/src/theme";
@@ -16,6 +18,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Image
 } from "react-native";
 import { useDispatch, useSelector } from "react-redux";
 
@@ -62,13 +65,19 @@ export default function LoginScreen() {
   const pwdValid = useMemo(() => validatePassword(password), [password]);
   const showRequirements = passwordFocused && password.length > 0;
 
+  // Lấy text từ config
+  const loginText = AppConfig.login;
+  const store = AppConfig.store;
+
+  const { loadCartFromServer } = useCartSync();
   const handleLogin = async () => {
     if (!email || !password) return;
     try {
       await dispatch(liferayLogin({ email, password })).unwrap();
+      await loadCartFromServer();
       router.replace("/(tabs)/home");
-    } catch (err: any) {
-      console.error("Login error:", err.message);
+    } catch (err: unknown) {
+      console.error("Login error:", err);
     }
   };
 
@@ -84,14 +93,15 @@ export default function LoginScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Logo */}
-        <View style={styles.logoGroup}>
-          <View style={styles.logoBadge}>
-            <Text style={styles.logoLetter}>M</Text>
-          </View>
-          <Text style={styles.logoText}>MekoEdu</Text>
+        <View style={styles.logoContainer}>
+          <Image 
+            source={store.logo}
+            style={[styles.logoImage, { width: store.logoWidth, height: store.logoHeight }]}
+            resizeMode="contain"
+          />
         </View>
 
-        <Text style={styles.title}>Chào mừng trở lại</Text>
+        <Text style={styles.title}>{loginText.title}</Text>
 
         {/* Error banner */}
         {!!error && (
@@ -105,14 +115,14 @@ export default function LoginScreen() {
         <View style={styles.formGroup}>
           {/* Email field */}
           <View style={styles.field}>
-            <Text style={styles.label}>Email</Text>
+            <Text style={styles.label}>{loginText.emailLabel}</Text>
             <View style={styles.inputWrapper}>
               <Ionicons name="mail-outline" size={18} color={theme.c.textSub} style={styles.inputIconLeft} />
               <TextInput
                 style={[styles.input, styles.inputWithIcon]}
                 value={email}
                 onChangeText={setEmail}
-                placeholder="ten@example.com"
+                placeholder={loginText.emailPlaceholder}
                 placeholderTextColor={theme.c.textSub}
                 keyboardType="email-address"
                 autoCapitalize="none"
@@ -126,7 +136,7 @@ export default function LoginScreen() {
 
           {/* Password field */}
           <View style={styles.field}>
-            <Text style={styles.label}>Mật khẩu</Text>
+            <Text style={styles.label}>{loginText.passwordLabel}</Text>
             <View style={styles.inputWrapper}>
               <Ionicons name="lock-closed-outline" size={18} color={theme.c.textSub} style={styles.inputIconLeft} />
               <TextInput
@@ -134,7 +144,7 @@ export default function LoginScreen() {
                 style={[styles.input, styles.inputWithIcon]}
                 value={password}
                 onChangeText={setPassword}
-                placeholder="••••••••"
+                placeholder={loginText.passwordPlaceholder}
                 placeholderTextColor={theme.c.textSub}
                 secureTextEntry={!showPassword}
                 autoComplete="password"
@@ -147,7 +157,7 @@ export default function LoginScreen() {
                 style={styles.eyeBtn}
                 onPress={() => setShowPassword(prev => !prev)}
                 activeOpacity={0.7}
-                accessibilityLabel={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                accessibilityLabel={showPassword ? loginText.hidePasswordA11y : loginText.showPasswordA11y}
               >
                 <Ionicons
                   name={showPassword ? "eye-outline" : "eye-off-outline"}
@@ -157,22 +167,22 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Password requirements */}
-            {showRequirements && (
-              <View style={styles.requirements}>
-                <RequirementItem text="8 ký tự trở lên" valid={pwdValid.length} />
-                <RequirementItem text="Ít nhất 1 ký tự đặc biệt" valid={pwdValid.special} />
-                <RequirementItem text="Ít nhất 1 chữ hoa" valid={pwdValid.upper} />
-                <RequirementItem text="Ít nhất 1 chữ số" valid={pwdValid.number} />
-              </View>
-            )}
+            {/* Quên mật khẩu */}
+            <View style={styles.forgotRow}>
+              <Link href="/(auth)/forgot-password" asChild>
+                <TouchableOpacity activeOpacity={0.7}>
+                  <Text style={styles.forgotLink}>{loginText.forgotPassword}</Text>
+                </TouchableOpacity>
+              </Link>
+            </View>
+
           </View>
         </View>
 
         {/* Actions */}
         <View style={styles.actionGroup}>
           <AppButton
-            title={loading ? "Đang xử lý..." : "Đăng nhập"}
+            title={loading ? loginText.loginButtonLoading : loginText.loginButton}
             onPress={handleLogin}
             disabled={loading}
             variant="primary"
@@ -180,10 +190,10 @@ export default function LoginScreen() {
           />
 
           <View style={styles.switchRow}>
-            <Text style={styles.switchText}>Chưa có tài khoản? </Text>
+            <Text style={styles.switchText}>{loginText.noAccount}</Text>
             <Link href="/(auth)/register" asChild>
               <TouchableOpacity activeOpacity={0.7}>
-                <Text style={styles.switchLink}>Đăng ký ngay</Text>
+                <Text style={styles.switchLink}>{loginText.signupLink}</Text>
               </TouchableOpacity>
             </Link>
           </View>
@@ -193,7 +203,7 @@ export default function LoginScreen() {
   );
 }
 
-// ─── Styles - ĐỒNG NHẤT VỚI REGISTER ─────────────────────────────────────────
+// ─── Styles ─────────────────────────────────────────
 
 const inputShadow = Platform.select({
   ios: { 
@@ -360,5 +370,26 @@ const createStyles = (theme: ReturnType<typeof useTheme>) =>
       fontWeight: "700",
       color: Colors.primary[500],
     },
+
+    logoContainer: {
+      alignItems: "center",
+      marginBottom: theme.spacing[8],
+    },
+
+    logoImage: {
+      width: 300,
+      height: 100,
+    },
+
+    forgotRow: {
+      alignItems: "flex-end",
+      marginTop: theme.spacing[1],
+    },
+    forgotLink: {
+      fontSize: 13,
+      color: Colors.primary[500],
+      fontWeight: "500",
+    },
+
   });
   

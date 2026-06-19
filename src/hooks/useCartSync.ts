@@ -1,6 +1,7 @@
-import { cartService, LiferayCartItem } from '@/src/services/cartService';
-import { findOrCreateCart } from '@/src/services/liferayService';
+import * as cartService from '@/src/services/cartService';
+import { findOrCreateCart } from '@/src/services/liferay';
 import {
+  addToCart,
   removeFromCart as localRemoveFromCart,
   updateQuantity as localUpdateQuantity,
   selectCartId,
@@ -15,10 +16,10 @@ import {
 } from '@/src/store/slices/liferayAuthSlice';
 import { useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-
+import { CartItem } from '../types/liferay';
 // ─── Map Liferay items → Redux CartItem shape ─────────────────────────────────
 
-const mapLiferayItems = (items: LiferayCartItem[]) =>
+const mapLiferayItems = (items: CartItem[]) =>
   (items ?? []).map((item) => ({
     id:          item.productId,
     cartItemId:  item.id,
@@ -123,7 +124,18 @@ export const useCartSync = () => {
         console.log(`📥 [useCartSync] addItem trả về cartItemId=${cartItemId}`);
 
         if (cartItemId) {
-          await loadCartFromServer();
+          dispatch(addToCart({
+            id: params.productId,         
+            cartItemId,                    
+            skuId: params.skuId,
+            quantity: params.quantity ?? 1,
+            name: params.name,
+            price: params.price,
+            promoPrice: params.promoPrice,
+            thumbnail: params.thumbnail || '',
+            catalogName: params.catalogName || '',
+          }));
+          // await loadCartFromServer();
         }
 
         return cartItemId;
@@ -134,7 +146,7 @@ export const useCartSync = () => {
         dispatch(setSyncing(false));
       }
     },
-    [isAuthenticated, dispatch, resolveCartId, loadCartFromServer]
+    [isAuthenticated, dispatch, resolveCartId]
   );
 
   // ── 3. CẬP NHẬT SỐ LƯỢNG ─────────────────────────────────────────────────

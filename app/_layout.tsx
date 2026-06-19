@@ -3,59 +3,47 @@ import { Stack } from "expo-router";
 import React from "react";
 import { StyleSheet, View } from "react-native";
 import { PaperProvider } from "react-native-paper";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { Provider } from "react-redux";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
+import { Provider } from "react-redux";
 
+import FlyToCartOverlay from "@/src/components/FlyToCartOverlay";
 import { store } from "../src/store";
 import { ThemeProvider, useTheme } from "../src/theme";
 
-const AppFrame = ({ children }: { children: React.ReactNode }) => {
-  const { c, radius, spacing } = useTheme();
-  const insets = useSafeAreaInsets();
-
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
-      <View
-        style={[
-          styles.frame,
-          {
-            margin: spacing.md,
-            overflow: "hidden",
-          },
-        ]}
-      >
-        {children}
-      </View>
-    </SafeAreaView>
-  )
-}
+const ROOT_PADDING = 8;
 
 const RootNavigation = () => {
   const { c } = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
-    <AppFrame>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: c.bg },
-        }}
+    <View style={[styles.container, { backgroundColor: c.bg }]}>
+      <View
+        style={[
+          styles.layoutWrapper,
+          {
+            paddingTop: insets.top > 0 ? ROOT_PADDING : 0,
+            paddingBottom: insets.bottom > 0 ? ROOT_PADDING : 0,
+            paddingLeft: ROOT_PADDING,
+            paddingRight: ROOT_PADDING,
+          },
+        ]}
       >
-        {/* 1. Màn hình Splash Screen*/}
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-
-        {/* 2. Màn hình giới thiệu Onboarding */}
-        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-
-        {/* 3. Màn hình Chào mừng (Đăng nhập / Đăng ký) */}
-        <Stack.Screen name="welcome" options={{ headerShown: false }} />
-
-        {/* 4. Khai báo các nhóm luồng màn hình có sẵn */}
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-      </Stack>
-    </AppFrame>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: c.bg },
+          }}
+        >
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+          <Stack.Screen name="welcome" options={{ headerShown: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        </Stack>
+      </View>
+    </View>
   );
 };
 
@@ -65,7 +53,8 @@ export default function RootLayout() {
       <ThemeProvider initialConfig={{ mode: 'light' }}>
         <PaperProvider>
           <RootNavigation />
-          <Toast /> 
+          <Toast />
+          <FlyToCartOverlay />
         </PaperProvider>
       </ThemeProvider>
     </Provider>
@@ -73,7 +62,10 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
-  frame: {
+  container: { 
+    flex: 1,
+  },
+  layoutWrapper: {
     flex: 1,
   },
 });

@@ -1,11 +1,11 @@
 // app/(tabs)/courses.tsx
+import CourseCard from "@/src/components/CourseCard";
+import { Skeleton } from "@/src/components/Skeleton";
 import { AppHeader } from "@/src/components/common/AppHeader";
 import { AppText } from "@/src/components/common/AppText";
-import CourseCard from "@/src/components/CourseCard";
 import { useLiferayCategories, useLiferayProducts } from "@/src/hooks/useLiferayCatalog";
-import type { LiferayCatalogProduct } from "@/src/services/liferayService";
 import { Spacing, useTheme } from "@/src/theme";
-import { Typography } from "@/src/theme/Typography";
+import { CatalogProduct } from "@/src/types/liferay";
 import { router } from "expo-router";
 import React, { useCallback, useRef, useState } from "react";
 import {
@@ -13,65 +13,105 @@ import {
   Animated,
   Dimensions,
   FlatList,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-const getNumColumns = () => {
-  if (SCREEN_WIDTH >= 1024) return 3;
-  if (SCREEN_WIDTH >= 768) return 2;
-  return 1;
-};
+// ─── Đồng bộ padding với FeaturedCoursesList ────────────────────────────────
+const ROOT_PADDING = 8;
+const AVAILABLE_WIDTH = SCREEN_WIDTH - (ROOT_PADDING * 2);
+const VISUAL_PAD = Spacing.layout.screenHorizontal - ROOT_PADDING; // 16 - 8 = 8
 
-const NUM_COLUMNS = getNumColumns();
-const HORIZONTAL_PADDING = Spacing.layout.screenHorizontal;
-const CARD_GAP = Spacing.layout.columnGap;
+const CARD_GAP = Spacing.layout.columnGap; // 12
+const NUM_COLUMNS = 2;
+
 const CARD_WIDTH =
-  (SCREEN_WIDTH - HORIZONTAL_PADDING * 2 - CARD_GAP * (NUM_COLUMNS - 1)) /
-  NUM_COLUMNS;
+  (AVAILABLE_WIDTH - VISUAL_PAD * 2 - CARD_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
 
+// ─── Types ───────────────────────────────────────────────────────────────────
+const SORT_OPTIONS = [
+  { key: "newest", label: "Mới nhất" },
+  { key: "popular", label: "Phổ biến" },
+  { key: "price_asc", label: "Giá thấp" },
+  { key: "price_desc", label: "Giá cao" },
+] as const;
+type SortKey = (typeof SORT_OPTIONS)[number]["key"];
+
+// ─── CategoryChip ─────────────────────────────────────────────────────────────
+function CategoryChip({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const { c } = useTheme();
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const press = () =>
+    Animated.spring(scale, {
+      toValue: 0.93,
+      useNativeDriver: true,
+      tension: 200,
+      friction: 10,
+    }).start();
+  const release = () =>
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 200,
+      friction: 10,
+    }).start();
+
+  return (
+    <Pressable onPress={onPress} onPressIn={press} onPressOut={release}>
+      <Animated.View
+        style={[
+          styles.chip,
+          active
+            ? { backgroundColor: c.primary, borderColor: c.primary }
+            : { backgroundColor: c.bgSoft, borderColor: c.border },
+          { transform: [{ scale }] },
+        ]}
+      >
+        {active && <View style={[styles.chipDot, { backgroundColor: "#fff" }]} />}
+        <AppText
+          variant="caption"
+          style={[
+            styles.chipText,
+            active
+              ? { color: "#fff", fontWeight: "600" }
+              : { color: c.textSub, fontWeight: "500" },
+          ]}
+        >
+          {label}
+        </AppText>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// ─── Main screen ──────────────────────────────────────────────────────────────
 export default function CatalogScreen() {
-  const { c, spacing, radius, typography } = useTheme();
+  const { c, spacing, radius } = useTheme();
+
   const [searchText, setSearchText] = useState("");
   const [activeCatId, setActiveCatId] = useState<number | undefined>(undefined);
-  const searchAnim = useRef(new Animated.Value(0)).current;
-  const scrollY = useRef(new Animated.Value(0)).current;
+  const [activeSort, setActiveSort] = useState<SortKey>("newest");
+  const [showSortMenu, setShowSortMenu] = useState(false);
 
   const { products, loading, error, hasMore, loadMore, applyFilters, refetch } =
-    useLiferayProducts({ pageSize: NUM_COLUMNS === 1 ? 8 : 12 });
-
+    useLiferayProducts({ pageSize: 12 });
   const { categories } = useLiferayCategories();
-
-  const headerOpacity = scrollY.interpolate({
-    inputRange: [0, 80],
-    outputRange: [0, 1],
-    extrapolate: "clamp",
-  });
-
-  const handleSearchFocus = () =>
-    Animated.spring(searchAnim, {
-      toValue: 1,
-      useNativeDriver: false,
-      tension: 80,
-      friction: 8,
-    }).start();
-
-  const handleSearchBlur = () =>
-    Animated.spring(searchAnim, {
-      toValue: 0,
-      useNativeDriver: false,
-      tension: 80,
-      friction: 8,
-    }).start();
 
   const handleSearch = useCallback(
     (text: string) => {
@@ -89,91 +129,98 @@ export default function CatalogScreen() {
     [searchText, applyFilters]
   );
 
-  const handleCardPress = (item: LiferayCatalogProduct) =>
-    router.push({ pathname: "/course/[id]", params: { id: item.id, source: "liferay" } });
+  const handleCardPress = (item: CatalogProduct) =>
+    router.push({
+      pathname: "/course/[id]",
+      params: { id: item.productId ?? item.id, source: "liferay" },
+    });
 
-  const searchBorderColor = searchAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [c.border, c.primary],
-  });
+  const activeSortLabel =
+    SORT_OPTIONS.find((o) => o.key === activeSort)?.label ?? "Sắp xếp";
 
-  const renderHeader = () => (
-    <View style={[styles.header, { backgroundColor: c.bg, borderBottomColor: c.border }]}>
-      <View style={[styles.heroSection, { paddingHorizontal: HORIZONTAL_PADDING }]}>
-        <AppText variant="overline" style={[styles.heroLabel, { color: c.primary }]}>
-          Khám phá
-        </AppText>
-        <AppText variant="h2" style={[styles.heroTitle, { color: c.text }]}>
-          Khóa học dành cho bạn
-        </AppText>
-      </View>
+  // ── Sub-renders ────────────────────────────────────────────────────────────
+  const renderCategories = () => (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={[styles.catList, { paddingHorizontal: VISUAL_PAD }]}
+    >
+      <CategoryChip
+        label="Tất cả"
+        active={activeCatId === undefined}
+        onPress={() => handleCategory(undefined)}
+      />
+      {categories.map((cat) => (
+        <CategoryChip
+          key={cat.id}
+          label={cat.name}
+          active={activeCatId === cat.id}
+          onPress={() => handleCategory(cat.id)}
+        />
+      ))}
+    </ScrollView>
+  );
 
-      <Animated.View
+  const renderFilterBar = () => (
+    <View style={[styles.filterBar, { paddingHorizontal: VISUAL_PAD }]}>
+      <AppText variant="caption" style={{ color: c.textSub }}>
+        {products.length} kết quả
+      </AppText>
+      <TouchableOpacity
         style={[
-          styles.searchWrapper,
+          styles.sortBtn,
           {
-            backgroundColor: c.bgSoft,
-            marginHorizontal: HORIZONTAL_PADDING,
-            borderRadius: radius.xl,
-            borderColor: searchBorderColor,
+            backgroundColor: showSortMenu ? c.primary : c.bgSoft,
+            borderColor: showSortMenu ? c.primary : c.border,
           },
         ]}
+        onPress={() => setShowSortMenu((v) => !v)}
       >
-        <AppText style={[styles.searchIcon, { color: c.textSub }]}>🔍</AppText>
-        <TextInput
-          style={[styles.searchInput, { color: c.text, ...typography.variants.body }]}
-          value={searchText}
-          onChangeText={handleSearch}
-          onFocus={handleSearchFocus}
-          onBlur={handleSearchBlur}
-          placeholder="Tìm tên khóa học..."
-          placeholderTextColor={c.textSub}
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-        />
-        {searchText.length > 0 && (
-          <TouchableOpacity onPress={() => handleSearch("")} style={styles.clearBtn}>
-            <AppText style={[styles.clearIcon, { color: c.textSub }]}>✕</AppText>
-          </TouchableOpacity>
-        )}
-      </Animated.View>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[styles.catRow, { paddingHorizontal: HORIZONTAL_PADDING, gap: spacing.sm }]}
-      >
-        <CategoryChip
-          label="Tất cả"
-          active={activeCatId === undefined}
-          onPress={() => handleCategory(undefined)}
-        />
-        {categories.map((cat) => (
-          <CategoryChip
-            key={cat.id}
-            label={cat.name}
-            active={activeCatId === cat.id}
-            onPress={() => handleCategory(cat.id)}
-          />
-        ))}
-      </ScrollView>
-
-      <View style={[styles.countRow, { paddingHorizontal: HORIZONTAL_PADDING }]}>
-        <AppText variant="caption" style={{ color: c.textSub }}>
-          {loading && products.length === 0 ? "Đang tải..." : `${products.length} khóa học`}
+        <AppText
+          style={{
+            color: showSortMenu ? "#fff" : c.text,
+            fontSize: 12,
+            fontWeight: "600",
+          }}
+        >
+          {activeSortLabel}
         </AppText>
-      </View>
+        <AppText
+          style={{
+            color: showSortMenu ? "#fff" : c.text,
+            fontSize: 10,
+          }}
+        >
+          ▾
+        </AppText>
+      </TouchableOpacity>
     </View>
   );
 
-  const renderItem = ({ item, index }: { item: LiferayCatalogProduct; index: number }) => {
-    const isLastInRow = (index + 1) % NUM_COLUMNS === 0;
+  const renderSkeleton = () => (
+    <View style={{ paddingHorizontal: VISUAL_PAD }}>
+      {Array.from({ length: 3 }).map((_, i) => (
+        <View key={i} style={[styles.row, { marginBottom: CARD_GAP }]}>
+          <Skeleton height={200} width={CARD_WIDTH} style={{ borderRadius: 12 }} />
+          <Skeleton
+            height={200}
+            width={CARD_WIDTH}
+            style={{ borderRadius: 12, marginLeft: CARD_GAP }}
+          />
+        </View>
+      ))}
+    </View>
+  );
+
+  // ── FlatList renderers ─────────────────────────────────────────────────────
+  const renderItem = ({ item, index }: { item: CatalogProduct; index: number }) => {
+    const isRight = index % NUM_COLUMNS === 1;
     return (
       <View
         style={[
           styles.cardWrapper,
-          { width: CARD_WIDTH, marginBottom: spacing.layout.gridGap },
-          !isLastInRow && { marginRight: CARD_GAP },
+          { width: CARD_WIDTH },
+          isRight && { marginLeft: CARD_GAP },
         ]}
       >
         <CourseCard course={item} onPress={() => handleCardPress(item)} />
@@ -181,296 +228,359 @@ export default function CatalogScreen() {
     );
   };
 
-  if (error && products.length === 0) {
-    return (
-      <View style={[styles.emptyState, { backgroundColor: c.bg }]}>
-        <AppText style={styles.emptyStateEmoji}>⚠️</AppText>
-        <AppText variant="h4" style={[styles.emptyStateTitle, { color: c.text }]}>
-          Không thể tải dữ liệu
+  const ListHeader = () => (
+    <View style={{ backgroundColor: c.bgSoft }}>
+      {renderCategories()}
+      {renderFilterBar()}
+    </View>
+  );
+
+  const ListEmpty = () =>
+    loading ? null : (
+      <View style={styles.emptyState}>
+        <AppText style={styles.emptyEmoji}>🔎</AppText>
+        <AppText variant="h4" style={[styles.emptyTitle, { color: c.text }]}>
+          Không tìm thấy kết quả
         </AppText>
-        <AppText variant="body" style={[styles.emptyStateDesc, { color: c.textSub }]}>
-          {error}
+        <AppText variant="body" style={[styles.emptyDesc, { color: c.textSub }]}>
+          Thử tìm kiếm với từ khóa khác hoặc chọn danh mục khác
         </AppText>
         <TouchableOpacity
-          style={[styles.retryButton, { backgroundColor: c.primary, borderRadius: radius.md }]}
-          onPress={refetch}
+          style={[
+            styles.emptyBtn,
+            { borderColor: c.primary, backgroundColor: c.primary + "12" },
+          ]}
+          onPress={() => {
+            handleSearch("");
+            handleCategory(undefined);
+          }}
         >
-          <AppText style={[styles.retryButtonText, { color: c.bg }]}>Thử lại</AppText>
+          <AppText style={{ color: c.primary, fontWeight: "600", fontSize: 13 }}>
+            Xóa bộ lọc
+          </AppText>
         </TouchableOpacity>
+      </View>
+    );
+
+  const ListFooter = () => {
+    if (loading && products.length === 0) return null;
+    if (loading)
+      return (
+        <View style={styles.footerLoader}>
+          <ActivityIndicator size="small" color={c.primary} />
+        </View>
+      );
+    if (hasMore)
+      return (
+        <TouchableOpacity
+          style={[
+            styles.loadMoreBtn,
+            {
+              borderColor: c.primary,
+              backgroundColor: c.primary + "12",
+              marginHorizontal: VISUAL_PAD,
+            },
+          ]}
+          onPress={loadMore}
+        >
+          <AppText style={{ color: c.primary, fontWeight: "600", fontSize: 13 }}>
+            Xem thêm ↓
+          </AppText>
+        </TouchableOpacity>
+      );
+    if (products.length > 0)
+      return (
+        <View style={[styles.endRow, { paddingHorizontal: VISUAL_PAD }]}>
+          <View style={[styles.endLine, { backgroundColor: c.border }]} />
+          <AppText variant="caption" style={{ color: c.textSub }}>
+            Đã hiển thị tất cả
+          </AppText>
+          <View style={[styles.endLine, { backgroundColor: c.border }]} />
+        </View>
+      );
+    return null;
+  };
+
+  // ── Error state ────────────────────────────────────────────────────────────
+  if (error && products.length === 0) {
+    return (
+      <View style={[styles.screen, { backgroundColor: c.bg }]}>
+        <StatusBar barStyle="dark-content" />
+        <AppHeader
+          title="Khóa học"
+          showCart
+          showNotification
+          isSearchable
+          placeholder="Tìm kiếm khóa học..."
+          searchQuery={searchText}
+          onSearchChange={handleSearch}
+        />
+        <View style={[styles.errorWrap, { backgroundColor: c.bgSoft }]}>
+          <View
+            style={[styles.errorCard, { backgroundColor: c.bg, borderColor: c.border }]}
+          >
+            <AppText style={styles.errorEmoji}>⚠️</AppText>
+            <AppText variant="h4" style={[styles.errorTitle, { color: c.text }]}>
+              Không thể tải dữ liệu
+            </AppText>
+            <AppText variant="body" style={[styles.errorDesc, { color: c.textSub }]}>
+              {error}
+            </AppText>
+            <TouchableOpacity
+              style={[styles.retryBtn, { backgroundColor: c.primary, borderRadius: radius.md }]}
+              onPress={refetch}
+            >
+              <AppText style={{ color: "#fff", fontWeight: "600" }}>Thử lại</AppText>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
     );
   }
 
+  // ── Main render ────────────────────────────────────────────────────────────
   return (
-    <View style={[styles.container, { backgroundColor: c.bgSoft }]}>
+    <View style={[styles.screen, { backgroundColor: c.bgSoft }]}>
       <StatusBar barStyle="dark-content" backgroundColor={c.bg} />
-      <Animated.View
-        style={[
-          styles.stickyHeader,
-          {
-            backgroundColor: c.bg,
-            borderBottomColor: c.border,
-            opacity: headerOpacity,
-          },
-        ]}
-      >
-        <AppHeader title="Khám phá" showBack={false} />
-      </Animated.View>
 
-      <FlatList
-        data={products}
-        keyExtractor={(item) => String(item.id)}
-        numColumns={NUM_COLUMNS}
-        key={`grid-${NUM_COLUMNS}`}
-        contentContainerStyle={[styles.gridContent, { paddingHorizontal: HORIZONTAL_PADDING }]}
-        columnWrapperStyle={NUM_COLUMNS > 1 ? styles.columnWrapper : undefined}
-        renderItem={renderItem}
-        ListHeaderComponent={renderHeader}
-        ListEmptyComponent={
-          !loading ? (
-            <View style={[styles.emptyState, { paddingVertical: spacing["3xl"] }]}>
-              <AppText style={styles.emptyStateEmoji}>🔎</AppText>
-              <AppText variant="h4" style={[styles.emptyStateTitle, { color: c.text }]}>
-                Không tìm thấy kết quả
-              </AppText>
-              <AppText variant="body" style={[styles.emptyStateDesc, { color: c.textSub }]}>
-                Thử tìm kiếm với từ khóa khác hoặc chọn danh mục khác
-              </AppText>
-            </View>
-          ) : null
-        }
-        ListFooterComponent={
-          loading && products.length === 0 ? (
-            <View style={[styles.loadingContainer, { gap: spacing.sm, paddingVertical: spacing.xl }]}>
-              <ActivityIndicator size="large" color={c.primary} />
-              <AppText variant="caption" style={{ color: c.textSub }}>
-                Đang tải khóa học...
-              </AppText>
-            </View>
-          ) : hasMore ? (
-            <TouchableOpacity
-              style={[
-                styles.loadMoreButton,
-                {
-                  marginHorizontal: HORIZONTAL_PADDING,
-                  marginVertical: spacing.md,
-                  borderRadius: radius.lg,
-                  borderColor: c.primary,
-                  backgroundColor: c.primary + "10",
-                },
-              ]}
-              onPress={loadMore}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color={c.primary} />
-              ) : (
-                <AppText variant="bodySmall" style={[styles.loadMoreText, { color: c.primary }]}>
-                  Xem thêm khóa học
-                </AppText>
-              )}
-            </TouchableOpacity>
-          ) : products.length > 0 ? (
-            <View style={[styles.endRow, { gap: spacing.sm, paddingVertical: spacing.lg }]}>
-              <View style={[styles.endLine, { backgroundColor: c.border }]} />
-              <AppText variant="caption" style={{ color: c.textSub }}>
-                Đã hiển thị tất cả
-              </AppText>
-              <View style={[styles.endLine, { backgroundColor: c.border }]} />
-            </View>
-          ) : null
-        }
-        refreshControl={
-          <RefreshControl
-            refreshing={loading && products.length > 0}
-            onRefresh={refetch}
-            tintColor={c.primary}
-            colors={[c.primary]}
-          />
-        }
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-          useNativeDriver: false,
-        })}
-        onEndReached={loadMore}
-        onEndReachedThreshold={0.4}
-        showsVerticalScrollIndicator={false}
-        initialNumToRender={NUM_COLUMNS * 3}
-        maxToRenderPerBatch={NUM_COLUMNS * 2}
-        windowSize={5}
-        scrollEventThrottle={16}
+      <AppHeader
+        title="Khóa học"
+        showCart
+        showNotification
+        isSearchable
+        placeholder="Tìm kiếm khóa học..."
+        searchQuery={searchText}
+        onSearchChange={handleSearch}
       />
+
+      {loading && products.length === 0 ? (
+        <ScrollView>
+          <ListHeader />
+          {renderSkeleton()}
+        </ScrollView>
+      ) : (
+        <FlatList
+          data={products}
+          keyExtractor={(item) => String(item.id)}
+          numColumns={NUM_COLUMNS}
+          contentContainerStyle={{
+            paddingHorizontal: VISUAL_PAD,
+            paddingBottom: 40,
+            paddingTop: 4,
+          }}
+          columnWrapperStyle={{ marginBottom: CARD_GAP }}
+          renderItem={renderItem}
+          ListHeaderComponent={<ListHeader />}
+          ListEmptyComponent={<ListEmpty />}
+          ListFooterComponent={<ListFooter />}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading && products.length > 0}
+              onRefresh={refetch}
+              tintColor={c.primary}
+              colors={[c.primary]}
+            />
+          }
+          onEndReached={hasMore ? loadMore : undefined}
+          onEndReachedThreshold={0.4}
+          showsVerticalScrollIndicator={false}
+          initialNumToRender={8}
+          maxToRenderPerBatch={6}
+          windowSize={5}
+          onScrollBeginDrag={() => setShowSortMenu(false)}
+        />
+      )}
+
+      {/* Sort dropdown */}
+      {showSortMenu && (
+        <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowSortMenu(false)} />
+          <View
+            style={[
+              styles.sortMenu,
+              {
+                backgroundColor: c.bg,
+                borderColor: c.border,
+                top: 110, // Adjust based on header + filter bar height
+                right: VISUAL_PAD,
+              },
+            ]}
+          >
+            {SORT_OPTIONS.map((opt, i) => (
+              <TouchableOpacity
+                key={opt.key}
+                style={[
+                  styles.sortMenuItem,
+                  i < SORT_OPTIONS.length - 1 && {
+                    borderBottomWidth: 0.5,
+                    borderBottomColor: c.border,
+                  },
+                ]}
+                onPress={() => {
+                  setActiveSort(opt.key);
+                  setShowSortMenu(false);
+                }}
+              >
+                <AppText
+                  style={{
+                    fontSize: 13,
+                    color: activeSort === opt.key ? c.primary : c.text,
+                    fontWeight: activeSort === opt.key ? "700" : "500",
+                  }}
+                >
+                  {opt.label}
+                </AppText>
+                {activeSort === opt.key && (
+                  <AppText style={{ color: c.primary, fontSize: 14, fontWeight: "700" }}>
+                    ✓
+                  </AppText>
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
     </View>
   );
 }
 
-// Category Chip Component với design system
-function CategoryChip({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  const { c, radius, spacing, typography } = useTheme();
-
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.chip,
-        {
-          paddingHorizontal: spacing.md,
-          paddingVertical: spacing.sm - 2,
-          borderRadius: radius.full,
-          borderWidth: spacing.borderWidth.thin,
-        },
-        active
-          ? { backgroundColor: c.primary, borderColor: c.primary + "80" }
-          : { backgroundColor: c.bgSoft, borderColor: c.border },
-        pressed && styles.chipPressed,
-      ]}
-      onPress={onPress}
-    >
-      <AppText
-        variant="caption"
-        style={[
-          styles.chipText,
-          active ? { color: c.bg, fontWeight: "600" } : { color: c.textSub, fontWeight: "500" },
-        ]}
-      >
-        {label}
-      </AppText>
-    </Pressable>
-  );
-}
-
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  stickyHeader: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-    borderBottomWidth: 0.5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  header: {
-    paddingBottom: Spacing.md,
-    borderBottomWidth: Spacing.borderWidth.thin,
-  },
-  heroSection: {
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.md,
-  },
-  heroLabel: {
-    letterSpacing: 2,
-    textTransform: "uppercase",
-    marginBottom: Spacing.xs,
-  },
-  heroTitle: {
-    lineHeight: 40,
-  },
-  searchWrapper: {
+  screen: { flex: 1 },
+  catList: { gap: 8, paddingVertical: 10 },
+  filterBar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Platform.OS === "ios" ? 12 : 8,
-    borderWidth: Spacing.borderWidth.normal,
-  },
-  searchIcon: {
-    fontSize: 15,
-    marginRight: Spacing.sm,
-  },
-  searchInput: {
-    flex: 1,
-    padding: 0,
-    fontSize: 16,
-  },
-  clearBtn: {
-    padding: 4,
-    marginLeft: Spacing.sm,
-  },
-  clearIcon: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  catRow: {
-    paddingBottom: Spacing.sm,
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    marginBottom: 10,
   },
   chip: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    gap: 4,
   },
-  chipPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.97 }],
+  chipDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   chipText: {
-    textAlign: "center",
+    fontSize: 12,
   },
-  countRow: {
-    paddingTop: Spacing.sm,
-    paddingBottom: Spacing.xs,
-  },
-  gridContent: {
-    paddingBottom: Spacing["3xl"],
-  },
-  columnWrapper: {
-    gap: 0,
-  },
-  cardWrapper: {},
-  loadingContainer: {
+  sortBtn: {
+    flexDirection: "row",
     alignItems: "center",
-  },
-  loadMoreButton: {
-    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    minWidth: 90,
     justifyContent: "center",
-    borderWidth: Spacing.borderWidth.normal,
-    paddingVertical: Spacing.md,
   },
-  loadMoreText: {
-    fontWeight: "600",
+  row: {
+    flexDirection: "row",
+  },
+  cardWrapper: {
+    marginBottom: 0,
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: "center",
+  },
+  loadMoreBtn: {
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: "center",
+    marginVertical: 16,
   },
   endRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 20,
   },
   endLine: {
     flex: 1,
-    height: 1,
+    height: 0.5,
   },
   emptyState: {
     alignItems: "center",
-    paddingHorizontal: Spacing.xl,
+    paddingHorizontal: 32,
+    paddingTop: 48,
   },
-  emptyStateEmoji: {
-    fontSize: 48,
-    marginBottom: Spacing.md,
+  emptyEmoji: {
+    fontSize: 36,
+    marginBottom: 12,
   },
-  emptyStateTitle: {
-    marginBottom: Spacing.sm,
+  emptyTitle: {
+    marginBottom: 8,
     textAlign: "center",
   },
-  emptyStateDesc: {
+  emptyDesc: {
     textAlign: "center",
     lineHeight: 22,
-    marginBottom: Spacing.lg,
+    marginBottom: 20,
   },
-  retryButton: {
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.sm + 2,
+  emptyBtn: {
+    paddingHorizontal: 28,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
   },
-  retryButtonText: {
-    fontSize: Typography.sizes.sm,
-    fontWeight: "600",
+  errorWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  errorCard: {
+    width: "100%",
+    alignItems: "center",
+    borderRadius: 20,
+    padding: 28,
+    borderWidth: 1,
+  },
+  errorEmoji: {
+    fontSize: 40,
+    marginBottom: 12,
+  },
+  errorTitle: {
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  errorDesc: {
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  retryBtn: {
+    paddingHorizontal: 32,
+    paddingVertical: 11,
+  },
+  sortMenu: {
+    position: "absolute",
+    minWidth: 140,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  sortMenuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
 });

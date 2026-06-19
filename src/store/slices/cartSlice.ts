@@ -14,6 +14,8 @@ export interface CartItem {
   promoPrice?: number;
   catalogName?: string;
   quantity: number;
+  shortDescription?: string;
+  description?: string;
 }
 
 export interface Coupon {
@@ -28,7 +30,6 @@ interface CartState {
   cartId: number | null;
   loading: boolean;
   error: string | null;
-  // ⚠️ Dùng array thay vì Set để Redux serializable
   selectedIds: (string | number)[];
   appliedCoupon: Coupon | null;
   syncing: boolean;
@@ -192,8 +193,23 @@ const cartSlice = createSlice({
         coupon?: Coupon | null;
       }>
     ) {
+      // ─── Merge: giữ lại name, thumbnail, catalogName từ local ───
+      const existingMap = new Map(state.items.map(i => [i.id, i]));
+      const mergedItems = action.payload.items.map(serverItem => {
+        const local = existingMap.get(serverItem.id);
+        if (local) {
+          return {
+            ...serverItem,
+            name: serverItem.name || local.name,
+            thumbnail: serverItem.thumbnail || local.thumbnail,
+            catalogName: serverItem.catalogName || local.catalogName,
+          };
+        }
+        return serverItem;
+      });
+
       state.cartId = action.payload.cartId;
-      state.items = action.payload.items;
+      state.items = mergedItems;
       if (action.payload.selectedIds !== undefined) {
         state.selectedIds = action.payload.selectedIds;
       }

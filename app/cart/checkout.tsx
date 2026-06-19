@@ -8,3 +8,15 @@ export default function CheckoutScreen() {
     </View>
   );
 }
+
+
+/**
+ * Xác nhận đơn hàng
+ * Địa chỉ nhận hàng
+ * Thông tin đơn hàng
+ * Khuyễn mãi
+ * Phương thức thanh toán
+ * Tổng cộng, ghi chú
+ * Khóa học không thể bỏ qua
+ * 
+ */
