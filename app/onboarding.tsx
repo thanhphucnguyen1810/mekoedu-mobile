@@ -28,7 +28,7 @@ interface Slide {
 const slides: Slide[] = [
   {
     id: '01',
-    title: 'Học tập mọi lúc, mọi nơi',
+    title: 'Bắt đầu trải nghiệm với chúng tôi',
     description:
       'Truy cập 500+ khóa học chất lượng từ các chuyên gia hàng đầu. Kiến thức luôn sẵn sàng chỉ với một chạm.',
     icon: 'book',

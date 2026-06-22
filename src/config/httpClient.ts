@@ -1,4 +1,4 @@
-// src/services/http.ts
+// src/config/httpClient.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios, {
   AxiosError,
@@ -8,24 +8,30 @@ import axios, {
 import { ENV } from "./env";
 import { TOKEN_KEYS } from "./tokenKeys";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ĐÂY LÀ INSTANCE DUY NHẤT CỦA APP. Mọi service (cart, catalog, user, order...)
+// PHẢI import `http` từ file này — KHÔNG được tự tạo axios.create() riêng,
+// nếu không sẽ mất khả năng auto-refresh token (401 sẽ không được xử lý).
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── Refresh-queue pattern ────────────────────────────────────────────────────
 let isRefreshing = false;
 let pendingQueue: Array<{
   resolve: (token: string) => void;
   reject: (err: unknown) => void;
 }> = [];
- 
+
 function drainQueue(token: string) {
   pendingQueue.forEach(({ resolve }) => resolve(token));
   pendingQueue = [];
 }
- 
+
 function rejectQueue(err: unknown) {
   pendingQueue.forEach(({ reject }) => reject(err));
   pendingQueue = [];
 }
 
-// ─── Core refresh logic (no axios – avoids interceptor loop) ─────────────────
+// ─── Core refresh logic (fetch thuần – tránh vòng lặp interceptor) ────────────
 async function doRefresh(): Promise<string> {
   const refreshToken = await AsyncStorage.getItem(TOKEN_KEYS.REFRESH);
   if (!refreshToken) throw new Error("No refresh token");
@@ -44,8 +50,12 @@ async function doRefresh(): Promise<string> {
     },
     body: body.toString(),
   });
- 
-  if (!res.ok) throw new Error(`Refresh failed: ${res.status}`);
+
+  if (!res.ok) {
+    // Refresh token hết hạn/không hợp lệ → xóa hết, bắt buộc login lại
+    await AsyncStorage.multiRemove([TOKEN_KEYS.ACCESS, TOKEN_KEYS.REFRESH]);
+    throw new Error(`Refresh failed: ${res.status}`);
+  }
 
   const data = await res.json();
   await AsyncStorage.setItem(TOKEN_KEYS.ACCESS, data.access_token);
@@ -63,44 +73,41 @@ function createHttpClient(): AxiosInstance {
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
-      "Accept-Language": "vi-VN", // ✅ Thêm header ngôn ngữ tiếng Việt
+      "Accept-Language": "vi-VN",
     },
   });
 
-  // REQUEST — attach token và các header khác
+  // REQUEST — attach token
   client.interceptors.request.use(
     async (config: InternalAxiosRequestConfig) => {
       const token = await AsyncStorage.getItem(TOKEN_KEYS.ACCESS);
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
-      
-      // Đảm bảo luôn có Accept-Language (có thể override nếu cần)
       if (!config.headers["Accept-Language"]) {
         config.headers["Accept-Language"] = "vi-VN";
       }
-      
       return config;
     },
     (err) => Promise.reject(err)
   );
 
-  // RESPONSE — handle 401 with token refresh
+  // RESPONSE — auto refresh on 401
   client.interceptors.response.use(
     (res) => res,
     async (error: AxiosError) => {
       const original = error.config as InternalAxiosRequestConfig & {
         _retry?: boolean;
       };
- 
-      if (error.response?.status !== 401 || original._retry) {
+
+      if (error.response?.status !== 401 || !original || original._retry) {
         return Promise.reject(error);
       }
- 
+
       original._retry = true;
- 
+
       if (isRefreshing) {
-        // Queue request until refresh completes
+        // Đang refresh ở 1 request khác → xếp hàng chờ thay vì gọi refresh lại
         return new Promise((resolve, reject) => {
           pendingQueue.push({
             resolve: (token) => {
@@ -111,7 +118,7 @@ function createHttpClient(): AxiosInstance {
           });
         });
       }
- 
+
       isRefreshing = true;
       try {
         const newToken = await doRefresh();
@@ -120,16 +127,14 @@ function createHttpClient(): AxiosInstance {
         return client(original);
       } catch (refreshErr) {
         rejectQueue(refreshErr);
-        // Clear tokens so app redirects to login
-        await AsyncStorage.multiRemove([TOKEN_KEYS.ACCESS, TOKEN_KEYS.REFRESH]);
         return Promise.reject(refreshErr);
       } finally {
         isRefreshing = false;
       }
     }
   );
-  
-  return client; 
+
+  return client;
 }
 
 export const http = createHttpClient();

@@ -32,6 +32,7 @@ export interface UserInfo {
   alternateName: string;
   accountBriefs?: { id: number; name: string; externalReferenceCode?: string }[];
   roleBriefs?: { id: number; name: string }[];
+  accountId?: number;
 }
 
 // ─── Catalog / Product ────────────────────────────────────────────────────────
@@ -104,6 +105,7 @@ export interface Category {
 
 export interface CartItem {
   id: number;
+  cartItemId: number; 
   productId: number;
   skuId: number;
   quantity: number;
@@ -114,17 +116,37 @@ export interface CartItem {
   catalogName?: string;
 }
 
+export interface CartSummary {
+  subtotal: number;
+  subtotalFormatted: string;
+  total: number;
+  totalFormatted: string;
+  discountAmount: number;
+  discountAmountFormatted: string;
+  shippingAmount: number;
+  shippingAmountFormatted: string;
+  taxAmount: number;
+  taxAmountFormatted: string;
+}
+
+
 export interface Cart {
   id: number;
   accountId: number;
   channelId: number;
-  cartItems: CartItem[];
-  total: number;
-  subtotal: number;
+  currencyCode?: string;
+  orderStatusInfo?: {
+    label: string;
+    code?: number;
+  };
+  couponCode?: string;
   discountTotal?: number;
+  cartItems?: CartItem[];
+  summary?: CartSummary;
 }
 
 export interface AddToCartPayload {
   skuId: number;
   quantity?: number;
 }
+

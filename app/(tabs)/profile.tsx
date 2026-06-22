@@ -6,7 +6,7 @@ import type { UserInfo } from "@/src/types/liferay";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Image, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native"; // ⚠️ Thêm Image
 import {
   Avatar,
   Divider,
@@ -23,6 +23,7 @@ const BASE_URL = ENV.API_URL;
 export default function ProfileScreen() {
   const { c, typography, spacing } = useTheme();
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+  const [avatarError, setAvatarError] = useState(false); // ⚠️ Thêm state
   const dispatch = useDispatch();
 
   const handleLogout = async () => {
@@ -40,6 +41,7 @@ export default function ProfileScreen() {
       try {
         const response = await getMyUserInfo();
         setUserInfo(response);
+        setAvatarError(false);
       } catch (error) {
         console.warn("Failed to load user info", error);
       }
@@ -51,6 +53,10 @@ export default function ProfileScreen() {
     backgroundColor: c.border,
     marginLeft: 42 + spacing.md,
   };
+
+  const avatarUrl = (userInfo as any)?.image 
+    ? `${BASE_URL}${(userInfo as any).image}` 
+    : null;
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: c.bg }]}>
@@ -73,20 +79,21 @@ export default function ProfileScreen() {
           >
             <View style={[styles.headerProfile, { gap: spacing.component.iconGap }]}>
               <View style={styles.avatarWrapper}>
-                {(userInfo as any)?.image ? (
-                  <Avatar.Image
-                    size={80}
-                    source={{ uri: `${BASE_URL}${(userInfo as any).image}` }}
-                    style={styles.avatar}
-                  />
-                ) : (
-                  <Avatar.Icon
-                    size={80}
-                    icon="account"
-                    color={c.bg}
-                    style={[styles.avatar, { backgroundColor: c.primary + '40' }]}
-                  />
-                )}
+                {/* ⚠️ THAY THẾ Avatar.Image bằng Image */}
+                <View style={styles.avatarContainer}>
+                  {avatarUrl && !avatarError ? (
+                    <Image
+                      source={{ uri: avatarUrl }}
+                      style={styles.avatarImage}
+                      resizeMode="cover" // ⚠️ Quan trọng: giúp ảnh fit trong khung
+                      onError={() => setAvatarError(true)}
+                    />
+                  ) : (
+                    <View style={[styles.avatarPlaceholder, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                      <Ionicons name="person" size={40} color="#fff" />
+                    </View>
+                  )}
+                </View>
                 <View
                   style={[
                     styles.statusDot,
@@ -127,7 +134,7 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* Stats Cards */}
+          {/* Stats Cards - Giữ nguyên */}
           <View style={[styles.statsContainer, { paddingHorizontal: spacing.layout.screenHorizontal }]}>
             <View style={[styles.statCard, { backgroundColor: c.bgSoft, borderColor: c.border }]}>
               <Text style={[styles.statNumber, { color: c.text }]}>0</Text>
@@ -143,7 +150,7 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* Menu Items */}
+          {/* Menu Items - Giữ nguyên */}
           <Surface
             style={[
               styles.menuGroup,
@@ -179,7 +186,7 @@ export default function ProfileScreen() {
             <ProfileItem 
               icon="receipt-outline" 
               title="Đơn hàng của tôi" 
-              desc="Theo dõi đơn hàng và lịch sử mua" 
+              desc="Theo dõi đơn hàng và lịch sử" 
               color={c.primary} 
               theme={c} 
               typography={typography} 
@@ -217,7 +224,7 @@ export default function ProfileScreen() {
             />
           </Surface>
 
-          {/* Logout Button */}
+          {/* Logout Button - Giữ nguyên */}
           <TouchableOpacity
             onPress={handleLogout}
             style={[
@@ -240,7 +247,7 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={20} color={c.textSub} style={styles.logoutArrow} />
           </TouchableOpacity>
 
-          {/* Version Info */}
+          {/* Version Info - Giữ nguyên */}
           <Text style={[styles.versionText, { color: c.textSub }]}>
             Phiên bản 1.0.0
           </Text>
@@ -285,11 +292,35 @@ const styles = StyleSheet.create({
     position: "relative",
     marginRight: 16,
   },
-  avatar: {
-    borderRadius: 40,
+  
+  // ⚠️ THÊM 3 STYLE MỚI CHO AVATAR
+  avatarContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40, // Bo tròn hoàn toàn
+    overflow: 'hidden', // Quan trọng: cắt ảnh theo hình tròn
     borderWidth: 3,
     borderColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  
+  // ⚠️ GIỮ NGUYÊN style cũ nhưng không dùng nữa (có thể xóa)
+  // avatar: {
+  //   borderRadius: 40,
+  //   borderWidth: 3,
+  //   borderColor: 'rgba(255,255,255,0.3)',
+  // },
+  
   statusDot: {
     position: "absolute",
     right: 0,

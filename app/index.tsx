@@ -71,7 +71,7 @@ export default function SplashScreen() {
             />
           </View>          
           <View style={[styles.badge, { backgroundColor: c.textSub + "15" }]}>
-            <Text style={[styles.subText, { color: c.text }]}>Học tập & Thi trực tuyến</Text>
+            <Text style={[styles.subText, { color: c.text }]}>Chất lượng hàng đầu, dịch vụ tận tâm</Text>
           </View>
         </Animated.View>
       </View>

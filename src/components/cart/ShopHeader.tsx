@@ -1,5 +1,6 @@
+// src/components/cart/ShopHeader.tsx
+
 import { AppText } from '@/src/components/common';
-import { SCheckbox } from '@/src/components/common/SCheckbox';
 import { AppConfig } from '@/src/config/appConfig';
 import { Colors, Spacing, useTheme } from '@/src/theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,21 +8,16 @@ import React from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { MEKO_RED } from './cartConstants';
 
-export function ShopHeader({
-  shopName,
-  allChecked,
-  onToggleAll,
-}: {
+type Props = {
   shopName: string;
-  allChecked: boolean;
-  onToggleAll: () => void;
-}) {
+};
+
+export function ShopHeader({ shopName }: Props) {
   const { c } = useTheme();
   const cartConfig = AppConfig.cart;
 
   return (
     <View style={[styles.header, { borderBottomColor: c.border }]}>
-      <SCheckbox checked={allChecked} onPress={onToggleAll} size={20} />
       <Ionicons name="storefront-outline" size={16} color={MEKO_RED} />
       <AppText variant="body2" weight="600" style={{ flex: 1 }}>
         {shopName}
@@ -38,6 +34,20 @@ export function ShopHeader({
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.md, paddingVertical: 10, borderBottomWidth: 0.5 },
-  voucherBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.primary[50], paddingHorizontal: 8, paddingVertical: 4, borderRadius: Spacing.borderRadius.sm },
+  header: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: Spacing.sm, 
+    paddingHorizontal: Spacing.md, 
+    paddingVertical: 10, 
+    borderBottomWidth: 0.5 
+  },
+  voucherBtn: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: Colors.primary[50], 
+    paddingHorizontal: 8, 
+    paddingVertical: 4, 
+    borderRadius: Spacing.borderRadius.sm 
+  },
 });

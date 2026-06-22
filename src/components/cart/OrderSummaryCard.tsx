@@ -1,9 +1,13 @@
+// src/components/cart/OrderSummaryCard.tsx
+
 import { AppText } from '@/src/components/common';
 import { AppConfig } from '@/src/config/appConfig';
 import {
   selectAppliedCoupon,
-  selectFinalTotal,
-  selectSelectedItems,
+  selectCartFinalTotalServer,
+  selectCartItems,
+  selectCartOriginalTotal,
+  selectCartSavings,
 } from '@/src/store/slices/cartSlice';
 import { Colors, Spacing, useTheme } from '@/src/theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,21 +15,18 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSelector } from 'react-redux';
 import { MEKO_RED } from './cartConstants';
-import { effectivePrice, fmtVND } from './cartHelpers';
+import { fmtVND } from './cartHelpers';
 
 export function OrderSummaryCard() {
   const { c } = useTheme();
   const cartConfig = AppConfig.cart;
-  const selectedItems = useSelector(selectSelectedItems);
+  const cartItems = useSelector(selectCartItems);
   const appliedCoupon = useSelector(selectAppliedCoupon);
-  const finalTotal = useSelector(selectFinalTotal);
+  const finalTotal = useSelector(selectCartFinalTotalServer);
+  const originalTotal = useSelector(selectCartOriginalTotal);
+  const savings = useSelector(selectCartSavings);
 
-  const subtotal = selectedItems.reduce((s, i) => s + effectivePrice(i) * i.quantity, 0);
-  const originalTotal = selectedItems.reduce((s, i) => s + i.price * i.quantity, 0);
-  const savedPromo = originalTotal - subtotal;
-  const savedCoupon = subtotal - finalTotal;
-
-  if (selectedItems.length === 0) return null;
+  if (cartItems.length === 0) return null;
 
   return (
     <View style={[styles.wrap, { backgroundColor: c.bg }]}>
@@ -38,17 +39,19 @@ export function OrderSummaryCard() {
         <AppText variant="caption">{fmtVND(originalTotal)}</AppText>
       </View>
 
-      {savedPromo > 0 && (
+      {savings > 0 && (
         <View style={styles.row}>
           <AppText variant="caption" color="textSub">{cartConfig.productDiscountLabel}</AppText>
-          <AppText variant="caption" style={{ color: Colors.success }}>-{fmtVND(savedPromo)}</AppText>
+          <AppText variant="caption" style={{ color: Colors.success }}>-{fmtVND(savings)}</AppText>
         </View>
       )}
 
-      {savedCoupon > 0 && appliedCoupon && (
+      {appliedCoupon && (
         <View style={styles.row}>
           <AppText variant="caption" color="textSub">{cartConfig.couponDiscountLabel} {appliedCoupon.code}</AppText>
-          <AppText variant="caption" style={{ color: Colors.success }}>-{fmtVND(savedCoupon)}</AppText>
+          <AppText variant="caption" style={{ color: Colors.success }}>
+            -{fmtVND(originalTotal - savings - finalTotal)}
+          </AppText>
         </View>
       )}
 
@@ -57,11 +60,11 @@ export function OrderSummaryCard() {
         <AppText style={styles.totalAmt}>{fmtVND(finalTotal)}</AppText>
       </View>
 
-      {(savedPromo + savedCoupon) > 0 && (
+      {(savings > 0 || appliedCoupon) && (
         <View style={styles.savingsBar}>
           <Ionicons name="happy-outline" size={14} color={MEKO_RED} />
           <AppText variant="caption" style={{ color: MEKO_RED, marginLeft: 4 }}>
-            {cartConfig.savingsMessage(fmtVND(savedPromo + savedCoupon))}
+            {cartConfig.savingsMessage(fmtVND(savings + (originalTotal - savings - finalTotal)))}
           </AppText>
         </View>
       )}

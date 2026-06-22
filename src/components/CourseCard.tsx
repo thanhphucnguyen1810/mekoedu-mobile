@@ -74,6 +74,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course, onPress }) => {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const sku = course.skus?.[0];
+  const productId = (sku as any)?.productId ?? (course as any)?.productId ?? course.id;
   const raw = getRawPrice(sku);
   const promo = getPromoPrice(sku);
   const price = fmtPrice(sku);
@@ -97,7 +98,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course, onPress }) => {
     setIsAddingCart(true);
 
     const payload = {
-      productId: course.id,
+      productId: productId,
       skuId,
       quantity: 1,
       name: course.name,

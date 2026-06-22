@@ -1,15 +1,11 @@
 /**
  * src/services/liferay/authService.ts
  * ─────────────────────────────────────────────────────────────────────────────
- * Xử lý toàn bộ luồng xác thực với Liferay OAuth2:
- *   - registerUser   – tạo tài khoản mới (client_credentials flow)
- *   - loginUser      – đăng nhập, lưu token vào AsyncStorage
- *   - refreshAccessToken – làm mới access token
- *   - logoutUser     – xóa token
- *   - getUserToken   – lấy access token từ storage
+ * Xử lý toàn bộ luồng xác thực với Liferay OAuth2.
  *
- * Không phụ thuộc vào `http` (httpClient) để tránh vòng lặp interceptor.
- * Dùng `fetch` thuần cho các OAuth2 endpoint.
+ * FIX: logoutUser chỉ xóa ACCESS + REFRESH token.
+ * ACCOUNT_ID và CART_ID được GIỮ LẠI để khi đăng nhập lại,
+ * cartService.findOrCreateCart() tìm thấy cart cũ thay vì tạo mới.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -17,15 +13,14 @@ import axios from "axios";
 import { ENV } from "../config/env";
 import { TOKEN_KEYS } from "../config/tokenKeys";
 import type { RegisterPayload, TokenResponse, UserInfo } from "../types/liferay";
+import { clearCartCache } from "./cartService";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Tạo Basic Auth header từ CLIENT_ID + CLIENT_SECRET */
 function basicAuthHeader(): string {
   return `Basic ${btoa(`${ENV.CLIENT_ID}:${ENV.CLIENT_SECRET}`)}`;
 }
 
-/** Gọi /o/oauth2/token với URLSearchParams body */
 async function oauthPost(params: Record<string, string>): Promise<TokenResponse> {
   const res = await fetch(`${ENV.API_URL}/o/oauth2/token`, {
     method: "POST",
@@ -46,14 +41,13 @@ async function oauthPost(params: Record<string, string>): Promise<TokenResponse>
       console.warn("OAuth Response không phải là JSON hợp lệ:", responseText);
     }
   }
-  
+
   if (!res.ok) {
     throw new Error(data.error_description ?? data.error ?? `OAuth error ${res.status}`);
   }
   return data as TokenResponse;
 }
 
-/** Lưu token mới vào AsyncStorage */
 async function persistTokens(data: TokenResponse): Promise<void> {
   await AsyncStorage.setItem(TOKEN_KEYS.ACCESS, data.access_token);
   if (data.refresh_token) {
@@ -79,17 +73,11 @@ export async function getRefreshToken(): Promise<string | null> {
   }
 }
 
-/**
- * Đăng ký tài khoản mới trên Liferay.
- * Dùng client_credentials token (không cần user đăng nhập).
- */
-export async function registerUser(payload: RegisterPayload): Promise<UserInfo> {
-  // 1. Lấy client token
+export async function registerUser(payload: RegisterPayload): Promise<UserInfo & { accountId?: number }> {
   const { access_token: clientToken } = await oauthPost({
     grant_type: "client_credentials",
   });
 
-  // 2. Sinh screenName nếu không truyền
   const screenName =
     payload.screenName ??
     payload.emailAddress
@@ -98,7 +86,6 @@ export async function registerUser(payload: RegisterPayload): Promise<UserInfo> 
       .toLowerCase() +
       Math.floor(Math.random() * 9000 + 1000);
 
-  // 3. Tạo user
   try {
     const res = await axios.post<UserInfo>(
       `${ENV.API_URL}/o/headless-admin-user/v1.0/user-accounts`,
@@ -111,12 +98,24 @@ export async function registerUser(payload: RegisterPayload): Promise<UserInfo> 
       },
       {
         headers: {
-          "Content-Type": "application/json", 
+          "Content-Type": "application/json",
           Authorization: `Bearer ${clientToken}`,
         },
       }
     );
-    return res.data;
+    const userData = res.data;
+    try {
+      const accountId = await createAccountForUser(
+        userData.id,
+        userData.emailAddress,
+        userData.alternateName || screenName,
+        clientToken
+      );
+      return { ...userData, accountId };
+    } catch (accountError) {
+      console.error("[authService] Không thể tạo account cho user:", accountError);
+      return userData;
+    }
   } catch (error) {
     if (axios.isAxiosError(error) && error.response) {
       const d = error.response.data;
@@ -126,10 +125,46 @@ export async function registerUser(payload: RegisterPayload): Promise<UserInfo> 
   }
 }
 
-/**
- * Đăng nhập bằng Resource Owner Password Credentials (ROPC).
- * Trả về tokens + thông tin user cơ bản.
- */
+async function createAccountForUser(
+  userId: number,
+  email: string,
+  alternateName: string,
+  clientToken: string
+): Promise<number> {
+  const createRes = await axios.post(
+    `${ENV.API_URL}/o/headless-admin-user/v1.0/accounts`,
+    {
+      name: alternateName || email.split("@")[0],
+      type: "person",
+      description: `Account for ${email}`,
+    },
+    {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${clientToken}`,
+      },
+    }
+  );
+
+  const accountId = createRes.data?.id;
+  if (!accountId) {
+    throw new Error("Không thể tạo account: response thiếu accountId");
+  }
+
+  await axios.post(
+    `${ENV.API_URL}/o/headless-admin-user/v1.0/accounts/${accountId}/user-accounts/by-email-address`,
+    [email],
+    {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${clientToken}`,
+      },
+    }
+  );
+
+  return accountId;
+}
+
 export async function loginUser(
   email: string,
   password: string
@@ -144,7 +179,6 @@ export async function loginUser(
   return { access_token: tokens.access_token, refresh_token: tokens.refresh_token };
 }
 
-/** Làm mới access token bằng refresh token */
 export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
   const tokens = await oauthPost({
     grant_type: "refresh_token",
@@ -154,12 +188,22 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
   return tokens;
 }
 
-/** Đăng xuất: xóa toàn bộ token khỏi storage */
+/**
+ * Đăng xuất: chỉ xóa ACCESS + REFRESH token.
+ *
+ * ✅ KHÔNG xóa ACCOUNT_ID và CART_ID — giữ lại để khi đăng nhập lại,
+ * cartService.findOrCreateCart() tìm được cart "Open" cũ trên Liferay
+ * thay vì tạo mới mỗi lần. Điều này đảm bảo giỏ hàng được duy trì
+ * liên tục qua các phiên đăng nhập của cùng một user.
+ */
 export async function logoutUser(): Promise<void> {
-  await AsyncStorage.multiRemove([TOKEN_KEYS.ACCESS, TOKEN_KEYS.REFRESH]);
+  await AsyncStorage.multiRemove([
+    TOKEN_KEYS.ACCESS,
+    TOKEN_KEYS.REFRESH,
+  ]);
+  clearCartCache();
 }
 
-/** Lấy client_credentials token (không cần user đăng nhập) */
 export async function getClientToken(): Promise<string> {
   const tokens = await oauthPost({ grant_type: "client_credentials" });
   return tokens.access_token;

@@ -1,15 +1,15 @@
 {
   "expo": {
-    "name": "mekoedu-mobile",
-    "slug": "mekoedu-mobile",
+    "name": "MekoStore",
+    "slug": "MekoStore",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./src/assets/images/icon.png",
-    "scheme": "mekoedumobile",
+    "icon": "./src/assets/images/logo-icon.png",
+    "scheme": "MekoStore",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./src/assets/images/splash-icon.png",
+      "image": "./src/assets/images/logo-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -18,23 +18,32 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./src/assets/images/adaptive-icon.png",
+        "foregroundImage": "./src/assets/images/logo-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "vn.mekosoft.store",
+      "usesCleartextTraffic": true
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./src/assets/images/favicon.png"
+      "favicon": "./src/assets/images/logo-icon.png"
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-web-browser"    ],
+      "expo-web-browser"
+    ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3529a085-98ec-45c9-9e84-f640ab3fb2ac"
+      }
     }
   }
 }

@@ -9,4 +9,5 @@ export const TOKEN_KEYS = {
   ACCESS:  "access_token",
   REFRESH: "refresh_token",
   CART_ID: "liferay_cart_id",
+  ACCOUNT_ID: 'account_id', 
 } as const;
