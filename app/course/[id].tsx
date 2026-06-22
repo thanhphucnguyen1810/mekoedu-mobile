@@ -1,529 +1,744 @@
-// app/(tabs)/categories.tsx  (hoặc categories screen của bạn)
-import { AppText } from "@/src/components/common/AppText";
-import CourseCard from "@/src/components/CourseCard";
-import { Skeleton } from "@/src/components/Skeleton";
-import {
-  getCategories,
-  getProductsByCategory,
-  getSubCategories,
-} from "@/src/services/catalogService";
-import { selectCartCount } from "@/src/store/slices/cartSlice";
-import { useTheme } from "@/src/theme";
-import { CatalogProduct, Category } from "@/src/types/liferay";
-import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { AppHeader } from "@/src/components/common";
+import { useCartSync } from "@/src/hooks/useCartSync";
+import { useFlyToCart } from "@/src/hooks/useFlyToCart";
+import { getProduct } from "@/src/services/liferay";
+import { Colors } from "@/src/theme";
+import type { CatalogProduct } from "@/src/types/liferay";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Image } from "expo-image";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Dimensions,
   FlatList,
-  Image,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
-  View
+  useWindowDimensions,
+  View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useSelector } from "react-redux";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+// ─── Helpers ────────────────────────────────────────────────────────────────
+const stripHtml = (html?: string) =>
+  html
+    ? html
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/?(p|div|li|h[1-6])[^>]*>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
+    : "";
 
-// ─── Layout constants ─────────────────────────────────────────────────────────
-const SIDEBAR_COLLAPSED = 60;   // thu nhỏ
-const SIDEBAR_EXPANDED  = 180;  // mở rộng khi chọn
-const SIDEBAR_W = SIDEBAR_COLLAPSED; // mặc định dùng collapsed
-const RIGHT_W  = SCREEN_WIDTH - SIDEBAR_W;
-const NUM_COLS = 2;
-const H_PAD    = 8;
-const CARD_GAP = 8;
-const CARD_W   = (RIGHT_W - H_PAD * 2 - CARD_GAP) / NUM_COLS;
-const PAGE_SIZE = 12;
+const formatPrice = (v: number) =>
+  v === 0 ? "Miễn phí" : v.toLocaleString("vi-VN") + " đ";
 
-// ─── ParentItem ───────────────────────────────────────────────────────────────
-function ParentItem({ cat, active, onPress }: { cat: Category; active: boolean; onPress: () => void }) {
-  const { c } = useTheme();
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+const MEKO_RED = Colors.primary[500];
 
-  const press = () =>
-    Animated.spring(scaleAnim, { toValue: 0.94, useNativeDriver: true, tension: 300, friction: 12 }).start();
-  const release = () =>
-    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 300, friction: 12 }).start();
+// ─── Sub-components ──────────────────────────────────────────────────────────
 
-  const initial = (cat.name?.[0] ?? "?").toUpperCase();
+const ImageCarousel = ({ images }: { images: string[] }) => {
+  const { width } = useWindowDimensions();
+  const [index, setIndex] = useState(0);
+  const flatRef = useRef<FlatList>(null);
+  const IMG_H = Math.round(width * 0.56);
+
+  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const idx = Math.round(e.nativeEvent.contentOffset.x / width);
+    setIndex(idx);
+  };
+
+  if (images.length === 0) return null;
 
   return (
-    <Pressable onPress={onPress} onPressIn={press} onPressOut={release}>
-      <Animated.View
-        style={[
-          styles.parentItem,
-          {
-            backgroundColor: active ? c.primary + "14" : "transparent",
-            borderRightWidth: active ? 2.5 : 0,
-            borderRightColor: c.primary,
-          },
-          { transform: [{ scale: scaleAnim }] },
-        ]}
-      >
-        {/* Icon / ảnh danh mục */}
-        <View style={[
-          styles.parentIcon,
-          { backgroundColor: active ? c.primary : c.bgSoft, borderColor: active ? c.primary : c.border }
-        ]}>
-          {cat.imageUrl ? (
-            <Image
-              source={{ uri: cat.imageUrl }}
-              style={{ width: 28, height: 28, borderRadius: 6 }}
-              resizeMode="cover"
-            />
-          ) : (
-            <Text style={{ fontSize: 14, fontWeight: "800", color: active ? "#fff" : c.primary }}>
-              {initial}
-            </Text>
-          )}
-        </View>
-
-        {/* Tên — wrap 2 dòng */}
-        <AppText
-          numberOfLines={2}
-          style={[
-            styles.parentLabel,
-            { color: active ? c.primary : c.textSub, fontWeight: active ? "700" : "400" },
-          ]}
-        >
-          {cat.name}
-        </AppText>
-
-        {/* Active indicator dot */}
-        {active && (
-          <View style={[styles.activeDot, { backgroundColor: c.primary }]} />
+    <View style={{ backgroundColor: Colors.neutral[100] }}>
+      <FlatList
+        ref={flatRef}
+        data={images}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        keyExtractor={(_, i) => String(i)}
+        renderItem={({ item }) => (
+          <Image
+            source={{ uri: item }}
+            style={{ width, height: IMG_H }}
+            contentFit="cover"
+            transition={150}
+          />
         )}
-      </Animated.View>
-    </Pressable>
-  );
-}
-
-// ─── SubChip ──────────────────────────────────────────────────────────────────
-function SubChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const { c } = useTheme();
-  return (
-    <Pressable onPress={onPress}>
-      <View style={[
-        styles.subChip,
-        active
-          ? { backgroundColor: c.primary, borderColor: c.primary }
-          : { backgroundColor: "transparent", borderColor: c.border },
-      ]}>
-        <AppText style={[styles.subChipText, { color: active ? "#fff" : c.textSub }]}>
-          {label}
-        </AppText>
-      </View>
-    </Pressable>
-  );
-}
-
-// ─── Main ─────────────────────────────────────────────────────────────────────
-export default function CategoriesScreen() {
-  const { c } = useTheme();
-  const insets = useSafeAreaInsets();
-  const cartCount = useSelector(selectCartCount);
-
-  const [parentCats, setParentCats] = useState<Category[]>([]);
-  const [childCats, setChildCats]   = useState<Category[]>([]);
-  const [selParent, setSelParent]   = useState<number | null>(null);
-  const [selSub, setSelSub]         = useState<string>("all");
-  const [products, setProducts]     = useState<CatalogProduct[]>([]);
-  const [loadingParent, setLoadingParent] = useState(true);
-  const [loadingChild, setLoadingChild]   = useState(false);
-  const [loadingProducts, setLoadingProducts] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [hasMore, setHasMore]       = useState(true);
-  const [page, setPage]             = useState(1);
-  const [searchText, setSearchText] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
-
-  const fetchingRef = useRef(false);
-  const pageRef     = useRef(1);
-  const hasMoreRef  = useRef(true);
-  pageRef.current   = page;
-  hasMoreRef.current = hasMore;
-
-  // ── Load parents ────────────────────────────────────────────────────────────
-  useEffect(() => {
-    (async () => {
-      try {
-        const parents = await getCategories();
-        setParentCats(parents);
-        if (parents.length > 0) {
-          setSelParent(parents[0].id);
-          loadChildren(parents[0].id);
-        }
-      } catch (e) {
-        console.warn("getCategories failed", e);
-      } finally {
-        setLoadingParent(false);
-      }
-    })();
-  }, []);
-
-  const loadChildren = async (parentId: number) => {
-    setLoadingChild(true);
-    try {
-      const subs = await getSubCategories(parentId);
-      setChildCats(subs);
-    } catch (e) {
-      setChildCats([]);
-    } finally {
-      setLoadingChild(false);
-    }
-  };
-
-  const handleParentPress = (id: number) => {
-    if (id === selParent) return;
-    setSelParent(id);
-    setSelSub("all");
-    setProducts([]);
-    setPage(1);
-    setHasMore(true);
-    setSearchText("");
-    loadChildren(id);
-  };
-
-  // ── Load products ───────────────────────────────────────────────────────────
-  const loadProducts = useCallback(async (
-    parentId: number, pageNum: number, append: boolean, subCat: string,
-  ) => {
-    if (fetchingRef.current) return;
-    fetchingRef.current = true;
-    if (!append) setLoadingProducts(true);
-    try {
-      const subId = subCat !== "all" ? Number(subCat) : undefined;
-      const result = await getProductsByCategory(parentId, pageNum, PAGE_SIZE, subId);
-      const items = result.items ?? [];
-      const lastPage = result.lastPage ?? 1;
-      setProducts(prev => append ? [...prev, ...items] : items);
-      setPage(pageNum);
-      setHasMore(pageNum < lastPage);
-    } catch (e: any) {
-      console.warn("getProductsByCategory failed:", e?.message);
-    } finally {
-      fetchingRef.current = false;
-      setLoadingProducts(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (selParent == null) return;
-    setProducts([]);
-    setPage(1);
-    setHasMore(true);
-    loadProducts(selParent, 1, false, selSub);
-  }, [selParent, selSub]);
-
-  const handleRefresh = async () => {
-    if (selParent == null) return;
-    setRefreshing(true);
-    setProducts([]);
-    setPage(1);
-    setHasMore(true);
-    await loadChildren(selParent);
-    await loadProducts(selParent, 1, false, selSub);
-    setRefreshing(false);
-  };
-
-  const handleLoadMore = () => {
-    if (!hasMoreRef.current || fetchingRef.current || selParent == null) return;
-    loadProducts(selParent, pageRef.current + 1, true, selSub);
-  };
-
-  // ── Filtered products (local search) ────────────────────────────────────────
-  const filtered = searchText.trim()
-    ? products.filter(p => p.name?.toLowerCase().includes(searchText.toLowerCase()))
-    : products;
-
-  // ── Renders ─────────────────────────────────────────────────────────────────
-  const renderCard = ({ item, index }: { item: CatalogProduct; index: number }) => (
-    <View style={[styles.cardWrap, { width: CARD_W }, index % 2 === 1 && { marginLeft: CARD_GAP }]}>
-      <CourseCard
-        course={item}
-        onPress={() => router.push({ pathname: "/course/[id]", params: { id: item.productId ?? item.id, source: "liferay" } })}
       />
-    </View>
-  );
-
-  const ListHeader = (
-    <View>
-      {/* Sub-category chips */}
-      {childCats.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.subChipList}
-        >
-          <SubChip label="Tất cả" active={selSub === "all"} onPress={() => setSelSub("all")} />
-          {childCats.map(sub => (
-            <SubChip
-              key={String(sub.id)}
-              label={sub.name}
-              active={selSub === String(sub.id)}
-              onPress={() => setSelSub(String(sub.id))}
+      {images.length > 1 && (
+        <View style={cs.dotRow}>
+          {images.map((_, i) => (
+            <View
+              key={i}
+              style={[cs.dot, i === index ? cs.dotActive : cs.dotInactive]}
             />
           ))}
-        </ScrollView>
+        </View>
       )}
-      {/* Result count */}
-      <View style={[styles.countBar, { borderBottomColor: c.border }]}>
-        <AppText style={[styles.countText, { color: c.textSub }]}>
-          {filtered.length} khóa học
-        </AppText>
-      </View>
     </View>
   );
+};
 
-  const Skeleton2 = () => (
-    <View style={styles.skeletonRow}>
-      <Skeleton height={190} width={CARD_W} style={{ borderRadius: 10 }} />
-      <Skeleton height={190} width={CARD_W} style={{ borderRadius: 10, marginLeft: CARD_GAP }} />
+const MetaRow = ({
+  icon,
+  label,
+  value,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+}) => (
+  <View style={cs.metaRow}>
+    <MaterialCommunityIcons
+      name={icon as any}
+      size={15}
+      color={Colors.neutral[500]}
+      style={{ marginTop: 1 }}
+    />
+    <Text style={cs.metaLabel}>{label}</Text>
+    <Text style={cs.metaValue} numberOfLines={2}>
+      {value}
+    </Text>
+  </View>
+);
+
+const SpecCard = ({ specs }: { specs: any[] }) => {
+  if (specs.length === 0) return null;
+  return (
+    <View style={cs.card}>
+      <Text style={cs.cardTitle}>Thông số khóa học</Text>
+      {specs.map((s: any, i: number) => (
+        <View
+          key={i}
+          style={[
+            cs.specRow,
+            i < specs.length - 1 && { borderBottomWidth: 0.5, borderBottomColor: Colors.neutral[100] },
+          ]}
+        >
+          <Text style={cs.specKey}>
+            {s.specificationTitle ?? s.specificationKey ?? `Mục ${i + 1}`}
+          </Text>
+          <Text style={cs.specVal}>{s.value ?? "—"}</Text>
+        </View>
+      ))}
     </View>
   );
+};
+
+const DescCard = ({ short, full }: { short?: string; full?: string }) => {
+  const [expanded, setExpanded] = useState(false);
+  const fullText = stripHtml(full);
+  const hasMore = fullText.length > 200;
+
+  if (!short && !full) return null;
 
   return (
-    <View style={[styles.screen, { backgroundColor: c.bg }]}>
-      {/* ── Top bar ── */}
-      <View style={[styles.topBar, { paddingTop: insets.top + 6, backgroundColor: c.bg, borderBottomColor: c.border }]}>
-        {/* Search */}
-        <View style={[styles.searchWrap, { backgroundColor: c.bgSoft, borderColor: searchFocused ? c.primary : c.border }]}>
-          <Ionicons name="search-outline" size={16} color={searchFocused ? c.primary : c.textSub} style={{ marginLeft: 10 }} />
-          <TextInput
-            style={[styles.searchInput, { color: c.text }]}
-            value={searchText}
-            onChangeText={setSearchText}
-            placeholder="Tìm trong danh mục..."
-            placeholderTextColor={c.textSub}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-            returnKeyType="search"
-          />
-          {searchText.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchText("")} style={styles.clearIcon}>
-              <Ionicons name="close-circle" size={16} color={c.textSub} />
+    <View style={cs.card}>
+      <Text style={cs.cardTitle}>Mô tả khóa học</Text>
+      {short ? <Text style={cs.shortDesc}>{stripHtml(short)}</Text> : null}
+      {fullText ? (
+        <>
+          <Text style={cs.bodyText} numberOfLines={expanded ? undefined : 4}>
+            {fullText}
+          </Text>
+          {hasMore && (
+            <TouchableOpacity
+              onPress={() => setExpanded((p) => !p)}
+              style={cs.expandBtn}
+            >
+              <Text style={cs.expandText}>
+                {expanded ? "Thu gọn ↑" : "Xem thêm ↓"}
+              </Text>
             </TouchableOpacity>
           )}
-        </View>
-        {/* Cart */}
-        <TouchableOpacity style={styles.cartBtn} onPress={() => router.push("/cart")} activeOpacity={0.8}>
-          <Ionicons name="cart-outline" size={22} color={c.text} />
-          {cartCount > 0 && (
-            <View style={[styles.cartBadge, { backgroundColor: c.primary }]}>
-              <AppText style={styles.cartBadgeText}>{cartCount > 9 ? "9+" : cartCount}</AppText>
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
+        </>
+      ) : null}
+    </View>
+  );
+};
 
-      {/* ── Body: sidebar + content ── */}
-      <View style={styles.body}>
-        {/* ── Left sidebar: danh mục cha ── */}
-        <View style={[styles.sidebar, { borderRightColor: c.border, backgroundColor: c.bgSoft }]}>
-          {loadingParent ? (
-            <View style={styles.sideCenter}>
-              <ActivityIndicator size="small" color={c.primary} />
-            </View>
-          ) : (
-            <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
-              {parentCats.map(cat => (
-                <ParentItem
-                  key={cat.id}
-                  cat={cat}
-                  active={cat.id === selParent}
-                  onPress={() => handleParentPress(cat.id)}
-                />
+const Tag = ({ label }: { label: string }) => (
+  <View style={cs.tag}>
+    <Text style={cs.tagText}>{label}</Text>
+  </View>
+);
+
+// ─── Toast nhẹ (giống CourseCard) ───────────────────────────────────────────
+const InlineToast = ({
+  msg,
+}: {
+  msg: { text: string; type: "success" | "error" } | null;
+}) => {
+  if (!msg) return null;
+  return (
+    <View
+      style={[
+        cs.toast,
+        {
+          backgroundColor:
+            msg.type === "success"
+              ? "rgba(16,185,129,0.95)"
+              : "rgba(239,68,68,0.95)",
+        },
+      ]}
+    >
+      <Ionicons
+        name={msg.type === "success" ? "checkmark-circle" : "close-circle"}
+        size={14}
+        color="#fff"
+      />
+      <Text style={cs.toastText}>{msg.text}</Text>
+    </View>
+  );
+};
+
+// ─── Main Screen ─────────────────────────────────────────────────────────────
+export default function CourseDetailScreen() {
+  const { id } = useLocalSearchParams();
+  const router = useRouter();
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  // ✅ Dùng useCartSync thay vì dispatch addToCart local
+  const { addToCartAsync } = useCartSync();
+  const { flyFrom } = useFlyToCart();
+
+  const [course, setCourse] = useState<CatalogProduct | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isAddingCart, setIsAddingCart] = useState(false);
+  const [toastMsg, setToastMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  // Ref nút giỏ hàng để đo vị trí fly animation
+  const cartBtnRef = useRef<View>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    (async () => {
+      try {
+        const data = await getProduct(Number(id));
+        setCourse(data);
+      } catch (e) {
+        console.warn("Failed to load product", e);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [id]);
+
+  const showToast = (text: string, type: "success" | "error" = "success") => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToastMsg({ text, type });
+    toastTimer.current = setTimeout(() => setToastMsg(null), 2200);
+  };
+
+  // ✅ handleAddToCart giống CourseCard: dùng useCartSync + fly animation
+  const handleAddToCart = async () => {
+    if (!course || isAddingCart) return;
+
+    const sku = course.skus?.[0] as any;
+    const productId = sku?.productId ?? (course as any)?.productId ?? course.id;
+    const skuId = sku?.skuId ?? sku?.id ?? 0;
+    const price: number = sku?.price?.price ?? 0;
+    const promoPrice: number | undefined = sku?.price?.promoPrice ?? undefined;
+    const imageUrl = course.images?.[0]
+      ? typeof course.images[0] === "string"
+        ? course.images[0]
+        : (course.images[0] as any).src ?? ""
+      : course.thumbnail ?? "";
+
+    if (!skuId) {
+      showToast("Không tìm thấy SKU sản phẩm", "error");
+      return;
+    }
+
+    setIsAddingCart(true);
+    try {
+      const cartItemId = await addToCartAsync({
+        productId,
+        skuId,
+        quantity: 1,
+        name: course.name,
+        price,
+        promoPrice,
+        thumbnail: imageUrl,
+        catalogName: course.catalogName,
+      });
+
+      if (cartItemId) {
+        // ✅ Trigger fly animation từ vị trí nút giỏ hàng
+        cartBtnRef.current?.measureInWindow((x, y, width, height) => {
+          const origin = { x: x + width / 2, y: y + height / 2 };
+          flyFrom(origin, MEKO_RED, imageUrl);
+        });
+        showToast("Đã thêm vào giỏ hàng", "success");
+      } else {
+        showToast("Không thể thêm vào giỏ", "error");
+      }
+    } catch (error: any) {
+      showToast(error?.message ?? "Đã xảy ra lỗi", "error");
+    } finally {
+      setIsAddingCart(false);
+    }
+  };
+
+  // ✅ Mua ngay: thêm vào giỏ rồi navigate
+  const handleBuyNow = async () => {
+    if (!course || isAddingCart) return;
+    await handleAddToCart();
+    router.push("/cart");
+  };
+
+  if (loading) {
+    return (
+      <View style={cs.screen}>
+        <AppHeader title="Chi tiết khóa học" showBack showCart />
+        <View style={cs.center}>
+          <ActivityIndicator size="large" color={Colors.primary[500]} />
+        </View>
+      </View>
+    );
+  }
+
+  if (!course) {
+    return (
+      <View style={cs.screen}>
+        <AppHeader title="Chi tiết khóa học" showBack showCart />
+        <View style={cs.center}>
+          <MaterialCommunityIcons name="book-off-outline" size={48} color={Colors.neutral[300]} />
+          <Text style={cs.emptyText}>Không tìm thấy khóa học</Text>
+          <TouchableOpacity onPress={() => router.back()} style={cs.backLink}>
+            <Text style={cs.backLinkText}>← Quay lại</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // ── Tính toán giá ──────────────────────────────────────────────────────────
+  const sku = course.skus?.[0] as any;
+  const price: number = sku?.price?.price ?? 0;
+  const promoPrice: number | undefined = sku?.price?.promoPrice ?? undefined;
+  const finalPrice = promoPrice ?? price;
+  const discountPct =
+    promoPrice && price > 0
+      ? Math.round(((price - promoPrice) / price) * 100)
+      : 0;
+
+  // ── Ảnh ───────────────────────────────────────────────────────────────────
+  const images: string[] = [
+    ...(course.images?.map((img: any) => img.src).filter(Boolean) ?? []),
+    course.thumbnail ? course.thumbnail : null,
+  ].filter((u): u is string => !!u && u.length > 0);
+
+  if (images.length === 0)
+    images.push("https://via.placeholder.com/800x450?text=MekoEdu");
+
+  // ── Specs ──────────────────────────────────────────────────────────────────
+  const specs: any[] = course.productSpecifications ?? [];
+  const lessonSpecs = specs.filter((s) => {
+    const k = (s.specificationKey || "").toLowerCase();
+    const t = (s.specificationTitle || "").toLowerCase();
+    return (
+      k.includes("bai") || k.includes("bài") || k.includes("lesson") ||
+      t.includes("bài") || t.includes("chương") || t.includes("lesson")
+    );
+  });
+  const otherSpecs = specs.filter((s) => !lessonSpecs.includes(s));
+
+  const categories: string[] = course.categories?.map((c: any) => c.name) ?? [];
+
+  return (
+    <View style={cs.screen}>
+      <AppHeader title="Chi tiết khóa học" showBack showCart />
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingBottom: 100 }}
+      >
+        {/* ── Carousel ── */}
+        <ImageCarousel images={images} />
+
+        {/* ── Tiêu đề & giá ── */}
+        <View style={cs.heroBlock}>
+          {categories.length > 0 && (
+            <View style={cs.tagRow}>
+              {categories.map((c, i) => (
+                <Tag key={i} label={c} />
               ))}
-            </ScrollView>
+            </View>
           )}
+
+          <Text style={cs.productTitle}>{course.name}</Text>
+
+          <View style={cs.ratingRow}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <Ionicons
+                key={n}
+                name={n <= 4 ? "star" : "star-half"}
+                size={14}
+                color="#F59E0B"
+              />
+            ))}
+            <Text style={cs.ratingText}>4.5 · 1.2k học viên</Text>
+          </View>
+
+          <View style={cs.priceBlock}>
+            <Text style={cs.finalPrice}>{formatPrice(finalPrice)}</Text>
+            {promoPrice !== undefined && price > 0 && (
+              <View style={cs.oldPriceRow}>
+                <Text style={cs.oldPrice}>{formatPrice(price)}</Text>
+                {discountPct > 0 && (
+                  <View style={cs.discBadge}>
+                    <Text style={cs.discText}>-{discountPct}%</Text>
+                  </View>
+                )}
+              </View>
+            )}
+            {promoPrice !== undefined && price > 0 && (
+              <Text style={cs.saveText}>
+                Tiết kiệm {formatPrice(price - promoPrice)}
+              </Text>
+            )}
+          </View>
         </View>
 
-        {/* ── Right: sub-chips + products ── */}
-        <View style={styles.right}>
-          {loadingProducts && products.length === 0 ? (
-            <View style={styles.skeletonWrap}>
-              <Skeleton2 />
-              <Skeleton2 />
-              <Skeleton2 />
+        <View style={{ paddingHorizontal: 14 }}>
+          {/* ── Meta nhanh ── */}
+          <View style={cs.card}>
+            <Text style={cs.cardTitle}>Thông tin nhanh</Text>
+            {course.catalogName ? (
+              <MetaRow icon="store-outline" label="Danh mục" value={course.catalogName} />
+            ) : null}
+            {sku?.sku ? (
+              <MetaRow icon="barcode" label="Mã SKU" value={sku.sku} />
+            ) : null}
+            {course.productStatus ? (
+              <MetaRow
+                icon="circle-slice-8"
+                label="Trạng thái"
+                value={course.productStatus === "approved" ? "Đang mở bán" : course.productStatus}
+              />
+            ) : null}
+            {sku?.availableQuantity !== undefined ? (
+              <MetaRow
+                icon="account-group-outline"
+                label="Còn chỗ"
+                value={sku.availableQuantity > 0 ? `${sku.availableQuantity} chỗ` : "Hết chỗ"}
+              />
+            ) : null}
+          </View>
+
+          <DescCard short={course.shortDescription} full={course.description} />
+          <SpecCard specs={otherSpecs} />
+
+          {lessonSpecs.length > 0 && (
+            <View style={cs.card}>
+              <Text style={cs.cardTitle}>Nội dung bài giảng</Text>
+              {lessonSpecs.map((s: any, i: number) => (
+                <View key={i} style={cs.lessonRow}>
+                  <View style={cs.lessonDot} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={cs.lessonTitle}>
+                      {s.specificationTitle ?? s.specificationKey}
+                    </Text>
+                    {s.value ? (
+                      <Text style={cs.lessonMeta}>{s.value}</Text>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
             </View>
-          ) : (
-            <FlatList
-              data={filtered}
-              keyExtractor={(item, i) => `${item.productId ?? item.id}-${i}`}
-              numColumns={NUM_COLS}
-              contentContainerStyle={styles.gridContent}
-              columnWrapperStyle={styles.columnWrapper}
-              renderItem={renderCard}
-              ListHeaderComponent={ListHeader}
-              ListEmptyComponent={
-                !loadingProducts ? (
-                  <View style={styles.emptyState}>
-                    <Ionicons name="book-outline" size={36} color={c.border} />
-                    <AppText style={[styles.emptyText, { color: c.textSub }]}>
-                      {searchText ? "Không tìm thấy khóa học" : "Chưa có khóa học"}
-                    </AppText>
-                  </View>
-                ) : null
-              }
-              ListFooterComponent={
-                hasMore && filtered.length > 0 ? (
-                  <TouchableOpacity
-                    style={[styles.loadMoreBtn, { borderColor: c.border }]}
-                    onPress={handleLoadMore}
-                    disabled={fetchingRef.current}
-                  >
-                    {fetchingRef.current
-                      ? <ActivityIndicator size="small" color={c.primary} />
-                      : <><AppText style={[styles.loadMoreText, { color: c.primary }]}>Xem thêm</AppText>
-                          <Ionicons name="chevron-down" size={14} color={c.primary} /></>
-                    }
-                  </TouchableOpacity>
-                ) : filtered.length > 0 ? (
-                  <View style={[styles.endRow, { borderTopColor: c.border }]}>
-                    <AppText style={[styles.endText, { color: c.textSub }]}>Đã hiển thị tất cả</AppText>
-                  </View>
-                ) : null
-              }
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={c.primary} colors={[c.primary]} />
-              }
-              onEndReached={handleLoadMore}
-              onEndReachedThreshold={0.4}
-              showsVerticalScrollIndicator={false}
-            />
           )}
+
+          <View style={cs.card}>
+            <Text style={cs.cardTitle}>Đánh giá</Text>
+            <View style={cs.emptyState}>
+              <MaterialCommunityIcons
+                name="comment-outline"
+                size={32}
+                color={Colors.neutral[300]}
+              />
+              <Text style={cs.emptyStateText}>Chưa có đánh giá nào</Text>
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* ── Bottom action bar ── */}
+      <View style={cs.bottomBar}>
+        <View style={cs.bottomInner}>
+          <View>
+            <Text style={cs.bottomPrice}>{formatPrice(finalPrice)}</Text>
+            {promoPrice !== undefined && price > 0 && (
+              <Text style={cs.bottomOldPrice}>{formatPrice(price)}</Text>
+            )}
+          </View>
+
+          <View style={cs.btnRow}>
+            {/* ✅ Nút thêm giỏ hàng với ref để đo vị trí fly animation */}
+            <View ref={cartBtnRef} collapsable={false}>
+              <TouchableOpacity
+                style={[cs.cartBtn, isAddingCart && { opacity: 0.6 }]}
+                onPress={handleAddToCart}
+                disabled={isAddingCart}
+                activeOpacity={0.85}
+              >
+                {isAddingCart ? (
+                  <ActivityIndicator size="small" color={Colors.primary[600]} />
+                ) : (
+                  <MaterialCommunityIcons
+                    name="cart-plus"
+                    size={20}
+                    color={Colors.primary[600]}
+                  />
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[cs.buyBtn, isAddingCart && { opacity: 0.6 }]}
+              activeOpacity={0.85}
+              onPress={handleBuyNow}
+              disabled={isAddingCart}
+            >
+              <Text style={cs.buyBtnText}>
+                {isAddingCart ? "Đang thêm..." : "Mua ngay"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
+
+      {/* ✅ Toast nổi góc dưới màn hình */}
+      <InlineToast msg={toastMsg} />
     </View>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
-  screen: { flex: 1 },
+// ─── Styles ──────────────────────────────────────────────────────────────────
+const cs = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: Colors.background.secondary },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
 
-  // Top bar
-  topBar: {
+  emptyText: { fontSize: 15, color: Colors.neutral[500], marginTop: 8 },
+  backLink: { marginTop: 4 },
+  backLinkText: { fontSize: 14, color: Colors.primary[500] },
+
+  dotRow: {
     flexDirection: "row",
-    alignItems: "center",
-    paddingBottom: 10,
-    paddingHorizontal: 10,
-    gap: 8,
-    borderBottomWidth: 0.5,
-  },
-  searchWrap: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    gap: 6,
-  },
-  searchInput: { flex: 1, height: 40, fontSize: 13, paddingRight: 10 },
-  clearIcon: { paddingRight: 8 },
-  cartBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  cartBadge: {
-    position: "absolute", top: 4, right: 4,
-    minWidth: 16, height: 16, borderRadius: 8,
-    alignItems: "center", justifyContent: "center", paddingHorizontal: 3,
-  },
-  cartBadgeText: { color: "#fff", fontSize: 9, fontWeight: "700" },
-
-  // Body
-  body: { flex: 1, flexDirection: "row" },
-
-  // Sidebar
-  sidebar: {
-    width: SIDEBAR_W,
-    borderRightWidth: StyleSheet.hairlineWidth,
-  },
-  sideCenter: { flex: 1, alignItems: "center", justifyContent: "center" },
-
-  // ParentItem
-  parentItem: {
-    alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    gap: 5,
-    position: "relative",
-  },
-  parentIcon: {
-    width: 40, height: 40,
-    borderRadius: 10,
-    alignItems: "center", justifyContent: "center",
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  parentLabel: {
-    fontSize: 9.5,
-    textAlign: "center",
-    lineHeight: 13,
-  },
-  activeDot: {
+    justifyContent: "center",
     position: "absolute",
-    right: 2, top: "50%",
-    width: 4, height: 4, borderRadius: 2,
-    transform: [{ translateY: -2 }],
+    bottom: 10,
+    left: 0,
+    right: 0,
+    gap: 4,
+  },
+  dot: { height: 5, borderRadius: 3 },
+  dotActive: { width: 14, backgroundColor: "#fff" },
+  dotInactive: { width: 5, backgroundColor: "rgba(255,255,255,0.45)" },
+
+  heroBlock: {
+    backgroundColor: Colors.background.primary,
+    padding: 14,
+    marginBottom: 8,
+  },
+  tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10 },
+  tag: {
+    backgroundColor: Colors.primary[50],
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 20,
+  },
+  tagText: { fontSize: 11, color: Colors.primary[600], fontWeight: "600" },
+
+  productTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: Colors.neutral[900],
+    lineHeight: 25,
+    marginBottom: 8,
   },
 
-  // Right panel
-  right: { flex: 1 },
+  ratingRow: { flexDirection: "row", alignItems: "center", gap: 3, marginBottom: 12 },
+  ratingText: { fontSize: 12, color: Colors.neutral[500], marginLeft: 4 },
 
-  // Sub chips
-  subChipList: { paddingHorizontal: H_PAD, paddingVertical: 9, gap: 6 },
-  subChip: {
-    paddingHorizontal: 11,
-    paddingVertical: 5,
-    borderRadius: 16,
-    borderWidth: 1,
+  priceBlock: { gap: 3 },
+  finalPrice: { fontSize: 26, fontWeight: "800", color: Colors.neutral[900] },
+  oldPriceRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  oldPrice: {
+    fontSize: 14,
+    color: Colors.neutral[400],
+    textDecorationLine: "line-through",
   },
-  subChipText: { fontSize: 11.5, fontWeight: "500" },
+  discBadge: {
+    backgroundColor: Colors.primary[600],
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  discText: { fontSize: 11, color: "#fff", fontWeight: "700" },
+  saveText: { fontSize: 12, color: Colors.primary[600], fontWeight: "600" },
 
-  // Count bar
-  countBar: {
-    paddingHorizontal: H_PAD,
-    paddingBottom: 6,
+  card: {
+    backgroundColor: Colors.background.primary,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 8,
+  },
+  cardTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.neutral[900],
+    marginBottom: 12,
+  },
+
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    paddingVertical: 6,
     borderBottomWidth: 0.5,
-    marginBottom: 6,
+    borderBottomColor: Colors.neutral[100],
   },
-  countText: { fontSize: 11 },
-
-  // Grid
-  gridContent: { paddingBottom: 40 },
-  columnWrapper: { paddingHorizontal: H_PAD, marginBottom: CARD_GAP },
-  cardWrap: {},
-
-  // Skeleton
-  skeletonWrap: { padding: H_PAD, gap: CARD_GAP },
-  skeletonRow: { flexDirection: "row", gap: CARD_GAP, marginBottom: CARD_GAP },
-
-  // Empty
-  emptyState: { alignItems: "center", paddingTop: 50, gap: 10 },
-  emptyText: { fontSize: 13, textAlign: "center" },
-
-  // Footer
-  loadMoreBtn: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 5, borderWidth: 1, borderRadius: 10,
-    paddingVertical: 9,
-    marginHorizontal: H_PAD,
-    marginVertical: 12,
+  metaLabel: {
+    fontSize: 13,
+    color: Colors.neutral[500],
+    width: 80,
+    flexShrink: 0,
   },
-  loadMoreText: { fontSize: 12.5, fontWeight: "600" },
-  endRow: {
-    alignItems: "center", paddingVertical: 16,
+  metaValue: {
+    flex: 1,
+    fontSize: 13,
+    color: Colors.neutral[800],
+    fontWeight: "500",
+  },
+
+  shortDesc: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: Colors.neutral[800],
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  bodyText: {
+    fontSize: 13,
+    color: Colors.neutral[600],
+    lineHeight: 20,
+  },
+  expandBtn: { marginTop: 8 },
+  expandText: { fontSize: 13, color: Colors.primary[500], fontWeight: "600" },
+
+  specRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 8,
+    gap: 12,
+  },
+  specKey: { fontSize: 13, color: Colors.neutral[500], flex: 1 },
+  specVal: {
+    fontSize: 13,
+    color: Colors.neutral[800],
+    fontWeight: "600",
+    flex: 1,
+    textAlign: "right",
+  },
+
+  lessonRow: {
+    flexDirection: "row",
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 0.5,
+    borderBottomColor: Colors.neutral[100],
+  },
+  lessonDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: Colors.primary[400],
+    marginTop: 5,
+    flexShrink: 0,
+  },
+  lessonTitle: { fontSize: 13, color: Colors.neutral[800], fontWeight: "600", lineHeight: 19 },
+  lessonMeta: { fontSize: 12, color: Colors.neutral[500], marginTop: 2 },
+
+  emptyState: { alignItems: "center", paddingVertical: 20, gap: 8 },
+  emptyStateText: { fontSize: 13, color: Colors.neutral[400] },
+
+  bottomBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: Colors.background.primary,
     borderTopWidth: 0.5,
-    marginHorizontal: H_PAD, marginTop: 8,
+    borderTopColor: Colors.neutral[200],
+    paddingBottom: 24,
   },
-  endText: { fontSize: 11 },
+  bottomInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  bottomPrice: { fontSize: 18, fontWeight: "800", color: Colors.neutral[900] },
+  bottomOldPrice: {
+    fontSize: 12,
+    color: Colors.neutral[400],
+    textDecorationLine: "line-through",
+    marginTop: 1,
+  },
+  btnRow: { flexDirection: "row", gap: 10, alignItems: "center" },
+  cartBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.primary[400],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  buyBtn: {
+    height: 44,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.primary[600],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  buyBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+
+  // ✅ Toast nổi bên dưới màn hình (trên bottom bar)
+  toast: {
+    position: "absolute",
+    bottom: 90,
+    left: 20,
+    right: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 24,
+    zIndex: 20,
+  },
+  toastText: { color: "#fff", fontSize: 13, fontWeight: "600" },
 });
