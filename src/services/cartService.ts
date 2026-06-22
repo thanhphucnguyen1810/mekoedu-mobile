@@ -1,17 +1,13 @@
 /**
- * src/services/liferay/cartService.ts  (hoặc services/cartService.ts)
+ * src/services/liferay/cartService.ts
  *
- * Dùng axios trực tiếp + getUserToken() — giống file gốc của bạn.
- * 
- * FIX so với file gốc:
- * 1. Memory cache _cachedCartId: trả về ngay không gọi network nếu đã biết
- * 2. Singleton mutex _resolvePromise: nhiều caller đồng thời chờ chung 1 lần
- * 3. sleep(500) sau tạo cart mới để Liferay kịp index
- * 4. Bỏ hoàn toàn channel/account API và OData filter (2 endpoint bạn không hỗ trợ)
- * 5. clearCartCache() để logout/checkout reset đúng chỗ
+ * FIX:
+ * - toAbsoluteUrl: ghép BASE_URL vào relative thumbnail URL của Liferay
+ * - toCartItem: log raw item để debug field name, lấy name từ nhiều nguồn
+ * - getCart: sau khi map items, thêm enrichment từ product API nếu name trống
  */
 
-import { ENV } from "@/src/config/env"; // hoặc import { BASE_URL, CHANNEL_ID } từ config của bạn
+import { ENV } from "@/src/config/env";
 import { TOKEN_KEYS } from "@/src/config/tokenKeys";
 import type { Cart, CartItem, CartSummary } from "@/src/types/liferay";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -19,17 +15,37 @@ import axios from "axios";
 import { getUserToken } from "./authService";
 import { ensureUserAccount } from "./userService";
 
-// ─── Config ───────────────────────────────────────────────────────────────────
-// Dùng cùng key storage với file gốc của bạn
 const CART_STORAGE_KEY = TOKEN_KEYS.CART_ID ?? "cart_id";
 const BASE_URL = ENV.API_URL;
 const CHANNEL_ID = ENV.CHANNEL_ID;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// ─── URL helper ───────────────────────────────────────────────────────────────
+
+/**
+ * Chuyển relative URL của Liferay → absolute URL có thể load được.
+ * "/o/commerce-media/..." → "http://host:port/o/commerce-media/..."
+ */
+function toAbsoluteUrl(url: string | undefined | null): string {
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  const base = BASE_URL.endsWith("/") ? BASE_URL.slice(0, -1) : BASE_URL;
+  const path = url.startsWith("/") ? url : `/${url}`;
+  return `${base}${path}`;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function toCartItem(raw: any): CartItem {
+  // Log raw lần đầu để biết Liferay trả field nào
+  if (__DEV__) {
+    const keys = Object.keys(raw);
+    console.log("[cartService] raw cart item keys:", keys.join(", "));
+    console.log("[cartService] raw.name:", raw.name, "| raw.productName:", raw.productName, "| raw.skuName:", raw.skuName);
+    console.log("[cartService] raw.thumbnail:", raw.thumbnail, "| raw.imageUrl:", raw.imageUrl);
+  }
+
   const priceObj = typeof raw.price === "object" && raw.price !== null ? raw.price : null;
   const price = priceObj
     ? (priceObj.price ?? priceObj.finalPrice ?? priceObj.unitPrice ?? 0)
@@ -38,13 +54,35 @@ function toCartItem(raw: any): CartItem {
     ? (priceObj.promoPrice ?? priceObj.discountedPrice ?? undefined)
     : undefined;
 
+  // Lấy name — thử tất cả field có thể có
   const name =
-    raw.name ?? raw.sku?.name ?? raw.product?.name ?? raw.skuName ?? raw.productName ?? "";
-  const thumbnail =
-    raw.thumbnail ?? raw.imageUrl ?? raw.image ??
-    raw.sku?.imageUrl ?? raw.product?.imageUrl ?? "";
+    raw.name ||
+    raw.productName ||
+    raw.skuName ||
+    raw.sku?.name ||
+    raw.product?.name ||
+    raw.nameCurrentValue ||
+    raw.title ||
+    "";
+
+  // ✅ Thumbnail: convert relative → absolute
+  const rawThumb =
+    raw.thumbnail ||
+    raw.imageUrl ||
+    raw.image ||
+    raw.sku?.imageUrl ||
+    raw.product?.imageUrl ||
+    raw.sku?.image ||
+    raw.product?.image ||
+    "";
+  const thumbnail = toAbsoluteUrl(rawThumb);
+
   const catalogName =
-    raw.catalogName ?? raw.product?.catalogName ?? raw.sku?.catalogName ?? "MekoEdu";
+    raw.catalogName ||
+    raw.product?.catalogName ||
+    raw.sku?.catalogName ||
+    "MekoEdu";
+
   const cartItemId = raw.id ?? raw.cartItemId ?? 0;
 
   return {
@@ -85,44 +123,18 @@ async function saveCartId(id: number): Promise<void> {
   await AsyncStorage.setItem(CART_STORAGE_KEY, String(id));
 }
 
-// ─── Module-level singleton ───────────────────────────────────────────────────
+// ─── Singleton ────────────────────────────────────────────────────────────────
 let _cachedCartId: number | null = null;
 let _resolvePromise: Promise<number | null> | null = null;
 
-/** Xóa cache — gọi sau logout hoặc checkout */
 export function clearCartCache(): void {
   _cachedCartId = null;
   _resolvePromise = null;
+  AsyncStorage.removeItem(CART_STORAGE_KEY).catch(() => {});
+  console.log("[cartService] 🧹 Cleared cart cache + storage");
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
-/** Đợi cart có thể GET được (retry với backoff) */
-async function waitForCartReady(
-  cartId: number,
-  token: string,
-  maxRetries = 5,
-  baseDelay = 500
-): Promise<boolean> {
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      await axios.get(
-        `${BASE_URL}/o/headless-commerce-delivery-cart/v1.0/carts/${cartId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      console.log(`[cartService] ✅ Cart ${cartId} ready after ${attempt + 1} attempt(s)`);
-      return true;
-    } catch (err: any) {
-      if (err.response?.status === 404 && attempt < maxRetries - 1) {
-        const delay = baseDelay * (attempt + 1); // 500, 1000, 1500, ...
-        console.log(`[cartService] ⏳ Cart ${cartId} not ready, retry in ${delay}ms...`);
-        await sleep(delay);
-        continue;
-      }
-      throw err; // lỗi khác hoặc hết retry
-    }
-  }
-  return false;
-}
 
 export async function getCart(cartId: number): Promise<Cart | null> {
   try {
@@ -130,44 +142,63 @@ export async function getCart(cartId: number): Promise<Cart | null> {
     if (!token) return null;
 
     const [cartRes, itemsRes] = await Promise.all([
-      axios.get(`${BASE_URL}/o/headless-commerce-delivery-cart/v1.0/carts/${cartId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-      axios.get(`${BASE_URL}/o/headless-commerce-delivery-cart/v1.0/carts/${cartId}/items`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { pageSize: 100 },
-      }),
+      axios.get(
+        `${BASE_URL}/o/headless-commerce-delivery-cart/v1.0/carts/${cartId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      ),
+      axios.get(
+        `${BASE_URL}/o/headless-commerce-delivery-cart/v1.0/carts/${cartId}/items`,
+        { headers: { Authorization: `Bearer ${token}` }, params: { pageSize: 100 } }
+      ),
     ]);
 
-    const cartItems = (itemsRes.data?.items ?? []).map(toCartItem);
+    let cartItems = (itemsRes.data?.items ?? []).map(toCartItem);
+
+    // ✅ Nếu name trống → fetch product để lấy tên thật
+    // Liferay cart item đôi khi không trả name, cần gọi thêm product API
+    const itemsNeedingName = cartItems.filter((i) => !i.name && i.id);
+    if (itemsNeedingName.length > 0) {
+      console.log("[cartService] Fetching product names for", itemsNeedingName.length, "items...");
+      await Promise.allSettled(
+        itemsNeedingName.map(async (item) => {
+          try {
+            const res = await axios.get(
+              `${BASE_URL}/o/headless-commerce-delivery-catalog/v1.0/products/${item.id}`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            const productName = res.data?.name || res.data?.productNames?.["vi_VN"] || res.data?.productNames?.["en_US"] || "";
+            if (productName) {
+              item.name = productName;
+            }
+            // Lấy thumbnail từ product nếu cart item không có
+            if (!item.thumbnail && res.data?.images?.[0]?.src) {
+              item.thumbnail = toAbsoluteUrl(res.data.images[0].src);
+            }
+          } catch (e) {
+            console.warn(`[cartService] Could not fetch product ${item.id}`);
+          }
+        })
+      );
+    }
+
     const summary = toCartSummary(cartRes.data?.summary);
-    console.log(cartItems);
-    
     return { ...cartRes.data, cartItems, summary } as Cart;
-  } catch (error) {
-    console.error("[cartService] getCart failed:", error);
+  } catch (error: any) {
+    const status = error?.response?.status;
+    console.error(`[cartService] getCart failed (${status}):`, cartId);
+    if (status === 404 || status === 403) {
+      if (_cachedCartId === cartId) _cachedCartId = null;
+      await AsyncStorage.removeItem(CART_STORAGE_KEY);
+    }
     return null;
   }
 }
 
-/**
- * Tìm hoặc tạo cart.
- *
- * Logic (giống file gốc, thêm cache + mutex):
- * 1. Memory cache → trả về ngay
- * 2. Mutex → nếu đang resolve thì chờ chung
- * 3. AsyncStorage saved → verify còn sống không
- * 4. Tạo mới nếu không có / hết hạn
- */
 export async function findOrCreateCart(): Promise<number | null> {
-  // Fast path: memory cache
-  if (_cachedCartId) {
-    return _cachedCartId;
-  }
+  if (_cachedCartId) return _cachedCartId;
 
-  // Mutex: chỉ 1 lần chạy, các caller khác chờ
   if (_resolvePromise) {
-    console.log("[cartService] ⏳ Đang resolve, chờ...");
+    console.log("[cartService] ⏳ Chờ resolve...");
     return _resolvePromise;
   }
 
@@ -185,7 +216,6 @@ async function _doFindOrCreate(): Promise<number | null> {
   const token = await getUserToken();
   if (!token) return null;
 
-  // ─── Bước 1: Dùng cart đã lưu ─────────────────────────────────────────────
   const savedCartId = await getSavedCartId();
   if (savedCartId) {
     try {
@@ -204,47 +234,37 @@ async function _doFindOrCreate(): Promise<number | null> {
     }
   }
 
-  // ─── Bước 2: Đảm bảo có accountId ─────────────────────────────────────────
   const accountId = await ensureUserAccount();
   if (!accountId) {
     console.error("[cartService] ❌ Không có accountId");
     return null;
   }
 
-  // ─── Bước 3: Tạo cart mới ─────────────────────────────────────────────────
-  console.log(`[cartService] 🛒 Tạo cart mới: accountId=${accountId}, channel=${CHANNEL_ID}`);
+  console.log(`[cartService] 🛒 Tạo cart mới: accountId=${accountId}`);
   try {
     const cartRes = await axios.post(
       `${BASE_URL}/o/headless-commerce-delivery-cart/v1.0/channels/${CHANNEL_ID}/carts`,
       { currencyCode: "VND", accountId, channelId: parseInt(CHANNEL_ID, 10) },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      }
+      { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
     );
     const newCartId = cartRes.data?.id;
     if (!newCartId) throw new Error("Cart response missing id");
-
-    // ─── Bước 4: Đợi cart ready (retry) ──────────────────────────────────────
-    await waitForCartReady(newCartId, token);
-    
-    // ─── Bước 5: Lưu và trả về ───────────────────────────────────────────────
+    await sleep(500);
     await saveCartId(newCartId);
-    console.log(`[cartService] ✅ Tạo cart thành công: ${newCartId}`);
+    console.log(`[cartService] ✅ Cart mới: ${newCartId}`);
     return newCartId;
   } catch (error: any) {
-    console.error("[cartService] ❌ Tạo cart thất bại:", {
-      status: error.response?.status,
-      data: error.response?.data,
-      url: error.config?.url,
-    });
+    console.error("[cartService] ❌ Tạo cart thất bại:", error?.response?.status, error?.response?.data);
     return null;
   }
 }
 
-export async function addItem(cartId: number, skuId: number, quantity = 1): Promise<number | null> {
+export async function addItem(
+  cartId: number,
+  skuId: number,
+  quantity = 1,
+  _retry = false
+): Promise<number | null> {
   try {
     const token = await getUserToken();
     if (!token) return null;
@@ -254,8 +274,16 @@ export async function addItem(cartId: number, skuId: number, quantity = 1): Prom
       { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
     );
     return res.data?.id ?? null;
-  } catch (error) {
-    console.error("[cartService] addItem failed:", error);
+  } catch (error: any) {
+    const status = error?.response?.status;
+    console.error(`[cartService] addItem failed (${status}): cartId=${cartId}, skuId=${skuId}`);
+    if (!_retry && (status === 404 || status === 403)) {
+      console.log("[cartService] Cart invalid → tạo cart mới và thử lại");
+      _cachedCartId = null;
+      await AsyncStorage.removeItem(CART_STORAGE_KEY);
+      const newCartId = await findOrCreateCart();
+      if (newCartId) return addItem(newCartId, skuId, quantity, true);
+    }
     return null;
   }
 }
@@ -270,17 +298,14 @@ export async function updateQuantity(cartItemId: number, quantity: number): Prom
       { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
     );
     return true;
-  } catch (error) {
-    console.error("[cartService] updateQuantity failed:", error);
+  } catch (error: any) {
+    console.error(`[cartService] updateQuantity failed (${error?.response?.status}):`, cartItemId);
     return false;
   }
 }
 
 export async function removeItem(cartItemId: number): Promise<boolean> {
-  if (!cartItemId) {
-    console.error("[cartService] removeItem: cartItemId không hợp lệ");
-    return false;
-  }
+  if (!cartItemId) return false;
   try {
     const token = await getUserToken();
     if (!token) return false;
@@ -290,7 +315,7 @@ export async function removeItem(cartItemId: number): Promise<boolean> {
     );
     return true;
   } catch (error: any) {
-    console.error("[cartService] removeItem failed:", cartItemId, error?.response?.status);
+    console.error(`[cartService] removeItem failed (${error?.response?.status}):`, cartItemId);
     return false;
   }
 }
@@ -299,27 +324,22 @@ export async function clearCart(cartId: number): Promise<boolean> {
   try {
     const cart = await getCart(cartId);
     if (!cart?.cartItems?.length) return true;
-
     const token = await getUserToken();
     if (!token) return false;
-
-    const itemIds = cart.cartItems
-      .map((item) => item.cartItemId)
-      .filter((id): id is number => !!id);
-
-    let allSuccess = true;
+    const itemIds = cart.cartItems.map((i) => i.cartItemId).filter((id): id is number => !!id);
+    let ok = true;
     for (const id of itemIds) {
       try {
         await axios.delete(
           `${BASE_URL}/o/headless-commerce-delivery-cart/v1.0/cart-items/${id}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-      } catch (err: any) {
-        console.error(`[cartService] Failed to delete item ${id}:`, err?.response?.status);
-        allSuccess = false;
+      } catch (e: any) {
+        console.error(`[cartService] delete item ${id} failed:`, e?.response?.status);
+        ok = false;
       }
     }
-    return allSuccess;
+    return ok;
   } catch (error) {
     console.error("[cartService] clearCart failed:", error);
     return false;
@@ -385,12 +405,8 @@ export async function checkout(cartId: number): Promise<{
       {},
       { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
     );
-
-    // Cart cũ đã thành order → xóa cache để lần mua tiếp tạo cart mới
     await AsyncStorage.removeItem(CART_STORAGE_KEY);
     clearCartCache();
-    console.log(`[cartService] ✅ Checkout OK, cleared cart cache`);
-
     return {
       orderId: res.data?.id ?? res.data?.orderId ?? cartId,
       summary: toCartSummary(res.data?.summary),

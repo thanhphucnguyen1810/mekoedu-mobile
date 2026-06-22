@@ -6,9 +6,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/src/components/common';
 import { AppConfig } from '@/src/config/appConfig';
-import { Spacing } from '@/src/theme';
+import { Colors, Spacing } from '@/src/theme';
 
-import { MEKO_RED } from './cartConstants';
+const LAYOUT_PADDING = 8; // 👈 khai báo tại đây
 
 export function CartHeader({
   itemCount,
@@ -21,41 +21,63 @@ export function CartHeader({
   const cartConfig = AppConfig.cart;
 
   return (
-    <View style={[styles.wrap, { paddingTop: insets.top + 4 }]}>
-      <TouchableOpacity
-        onPress={() => router.back()}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Ionicons name="arrow-back" size={22} color="#fff" />
-      </TouchableOpacity>
-      <AppText variant="body1" weight="600" style={styles.title}>
-        {cartConfig.title} {itemCount > 0 ? `(${itemCount})` : ''}
-      </AppText>
-      {itemCount > 0 ? (
+    <View
+      style={[
+        styles.wrap,
+        {
+          paddingTop: insets.top > 0 ? insets.top + 8 : 16,
+          paddingBottom: 12,
+          marginLeft: -LAYOUT_PADDING,
+          marginRight: -LAYOUT_PADDING,
+          marginTop: -LAYOUT_PADDING,
+          backgroundColor: 'transparent', // ✅ không nền
+        },
+      ]}
+    >
+      <View style={styles.content}>
         <TouchableOpacity
-          onPress={onClear}
+          onPress={() => router.back()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <AppText variant="caption" style={styles.clearBtn}>
-            {cartConfig.clearAllLabel}
-          </AppText>
+          <Ionicons name="arrow-back" size={22} color={Colors.neutral[900]} />
         </TouchableOpacity>
-      ) : (
-        <View style={{ width: 56 }} />
-      )}
+        <AppText variant="body1" weight="600" style={[styles.title, { color: Colors.neutral[900] }]}>
+          {cartConfig.title} {itemCount > 0 ? `(${itemCount})` : ''}
+        </AppText>
+        {itemCount > 0 ? (
+          <TouchableOpacity
+            onPress={onClear}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <AppText variant="caption" style={[styles.clearBtn, { color: Colors.neutral[600] }]}>
+              {cartConfig.clearAllLabel}
+            </AppText>
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 56 }} />
+        )}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
+    overflow: 'hidden',
+    // Không có backgroundColor
+  },
+  content: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: MEKO_RED,
-    paddingHorizontal: Spacing.md,
-    paddingBottom: 12,
+    paddingHorizontal: Spacing.md + LAYOUT_PADDING,
     gap: 12,
   },
-  title: { flex: 1, color: '#fff', fontSize: 17 },
-  clearBtn: { color: 'rgba(255,255,255,0.85)', fontSize: 12 },
+  title: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  clearBtn: {
+    fontSize: 12,
+  },
 });

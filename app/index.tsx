@@ -11,12 +11,10 @@ export default function SplashScreen() {
   const { c } = useTheme();
   const router = useRouter();
 
-  // Tạo các biến phục vụ hiệu ứng fade-in & scale-up cho logo mượt mà
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
 
   useEffect(() => {
-    // Chạy Animation ngay khi vào app
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -33,10 +31,8 @@ export default function SplashScreen() {
 
     const checkAppLaunch = async () => {
       await new Promise((resolve) => setTimeout(resolve, 2500));
-
       try {
         const hasLaunched = await AsyncStorage.getItem("hasLaunched");
-
         if (hasLaunched === null) {
           await AsyncStorage.setItem("hasLaunched", "true");
           router.replace("/onboarding");
@@ -65,7 +61,7 @@ export default function SplashScreen() {
         >
           <View style={styles.logoBox}>
             <Image
-              source={require("@/src/assets/images/logo-icon.png")}
+              source={require("@/src/assets/images/logo-icon.jpg")}
               style={styles.logoImage}
               resizeMode="contain"
             />
@@ -141,10 +137,12 @@ const styles = StyleSheet.create({
     height: "70%",
   },
   brandText: {
-    fontSize: 26,
+    fontSize: 34,
     fontWeight: "800",
-    letterSpacing: 4,
+    letterSpacing: 3,
     marginBottom: 8,
+    marginTop: 4,
+    textAlign: 'center',
   },
   badge: {
     paddingHorizontal: 14,

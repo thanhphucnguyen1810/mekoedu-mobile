@@ -1,4 +1,4 @@
-import { AppHeader } from "@/src/components/common";
+// app/(tabs)/categories.tsx  (hoặc categories screen của bạn)
 import { AppText } from "@/src/components/common/AppText";
 import CourseCard from "@/src/components/CourseCard";
 import { Skeleton } from "@/src/components/Skeleton";
@@ -7,8 +7,10 @@ import {
   getProductsByCategory,
   getSubCategories,
 } from "@/src/services/catalogService";
-import { Spacing, useTheme } from "@/src/theme";
+import { selectCartCount } from "@/src/store/slices/cartSlice";
+import { useTheme } from "@/src/theme";
 import { CatalogProduct, Category } from "@/src/types/liferay";
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -22,673 +24,507 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSelector } from "react-redux";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-const PARENT_BOX_WIDTH = 80;
-const CHILD_AREA_WIDTH =
-  SCREEN_WIDTH - PARENT_BOX_WIDTH - StyleSheet.hairlineWidth;
-
-const NUM_COLUMNS = 2;
-const CARD_H_PAD = Spacing.sm;
-const CARD_GAP = Spacing.sm;
-const CARD_WIDTH =
-  (CHILD_AREA_WIDTH - CARD_H_PAD * 2 - CARD_GAP * (NUM_COLUMNS - 1)) /
-  NUM_COLUMNS;
-
+// ─── Layout constants ─────────────────────────────────────────────────────────
+const SIDEBAR_COLLAPSED = 60;   // thu nhỏ
+const SIDEBAR_EXPANDED  = 180;  // mở rộng khi chọn
+const SIDEBAR_W = SIDEBAR_COLLAPSED; // mặc định dùng collapsed
+const RIGHT_W  = SCREEN_WIDTH - SIDEBAR_W;
+const NUM_COLS = 2;
+const H_PAD    = 8;
+const CARD_GAP = 8;
+const CARD_W   = (RIGHT_W - H_PAD * 2 - CARD_GAP) / NUM_COLS;
 const PAGE_SIZE = 12;
 
-// ─── CategoryImage ────────────────────────────────────────────────────────────
-function CategoryImage({
-  url,
-  size,
-  borderRadius,
-  name,
-  tintColor,
-}: {
-  url: string;
-  size: number;
-  borderRadius: number;
-  name: string;
-  tintColor: string;
-}) {
-  const [hasError, setHasError] = useState(false);
-  const hasUrl = !!url && url.length > 0;
-
-  if (!hasUrl || hasError) {
-    return (
-      <View
-        style={[
-          categoryImageStyles.fallback,
-          { width: size, height: size, borderRadius },
-        ]}
-      >
-        <Text
-          style={{ color: tintColor, fontSize: size * 0.42, fontWeight: "800" }}
-        >
-          {(name?.[0] ?? "?").toUpperCase()}
-        </Text>
-      </View>
-    );
-  }
-
-  return (
-    <Image
-      source={{ uri: url }}
-      style={{ width: size, height: size, borderRadius }}
-      resizeMode="cover"
-      onError={() => setHasError(true)}
-    />
-  );
-}
-
-const categoryImageStyles = StyleSheet.create({
-  fallback: { alignItems: "center", justifyContent: "center" },
-});
-
-// ─── SubCategoryChip ──────────────────────────────────────────────────────────
-function SubCategoryChip({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
+// ─── ParentItem ───────────────────────────────────────────────────────────────
+function ParentItem({ cat, active, onPress }: { cat: Category; active: boolean; onPress: () => void }) {
   const { c } = useTheme();
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
+  const press = () =>
+    Animated.spring(scaleAnim, { toValue: 0.94, useNativeDriver: true, tension: 300, friction: 12 }).start();
+  const release = () =>
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 300, friction: 12 }).start();
+
+  const initial = (cat.name?.[0] ?? "?").toUpperCase();
+
   return (
-    <Pressable
-      onPress={onPress}
-      onPressIn={() =>
-        Animated.spring(scaleAnim, {
-          toValue: 0.93,
-          useNativeDriver: true,
-          tension: 200,
-          friction: 10,
-        }).start()
-      }
-      onPressOut={() =>
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          useNativeDriver: true,
-          tension: 200,
-          friction: 10,
-        }).start()
-      }
-    >
+    <Pressable onPress={onPress} onPressIn={press} onPressOut={release}>
       <Animated.View
         style={[
-          chipStyles.chip,
-          { borderWidth: 1, borderRadius: 20 },
-          active
-            ? { backgroundColor: c.primary, borderColor: c.primary }
-            : { backgroundColor: c.bgSoft, borderColor: c.border },
+          styles.parentItem,
+          {
+            backgroundColor: active ? c.primary + "14" : "transparent",
+            borderRightWidth: active ? 2.5 : 0,
+            borderRightColor: c.primary,
+          },
           { transform: [{ scale: scaleAnim }] },
         ]}
       >
+        {/* Icon / ảnh danh mục */}
+        <View style={[
+          styles.parentIcon,
+          { backgroundColor: active ? c.primary : c.bgSoft, borderColor: active ? c.primary : c.border }
+        ]}>
+          {cat.imageUrl ? (
+            <Image
+              source={{ uri: cat.imageUrl }}
+              style={{ width: 28, height: 28, borderRadius: 6 }}
+              resizeMode="cover"
+            />
+          ) : (
+            <Text style={{ fontSize: 14, fontWeight: "800", color: active ? "#fff" : c.primary }}>
+              {initial}
+            </Text>
+          )}
+        </View>
+
+        {/* Tên — wrap 2 dòng */}
         <AppText
-          variant="caption"
+          numberOfLines={2}
           style={[
-            chipStyles.chipText,
-            active
-              ? { color: "#fff", fontWeight: "600" }
-              : { color: c.textSub, fontWeight: "500" },
+            styles.parentLabel,
+            { color: active ? c.primary : c.textSub, fontWeight: active ? "700" : "400" },
           ]}
         >
-          {label}
+          {cat.name}
         </AppText>
+
+        {/* Active indicator dot */}
+        {active && (
+          <View style={[styles.activeDot, { backgroundColor: c.primary }]} />
+        )}
       </Animated.View>
     </Pressable>
   );
 }
 
-const chipStyles = StyleSheet.create({
-  chip: {
-    paddingHorizontal: Spacing.sm + 2,
-    paddingVertical: Spacing.xs,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  chipText: { fontSize: 11 },
-});
-
-// ─── Main Screen ──────────────────────────────────────────────────────────────
-const Categories = () => {
+// ─── SubChip ──────────────────────────────────────────────────────────────────
+function SubChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   const { c } = useTheme();
+  return (
+    <Pressable onPress={onPress}>
+      <View style={[
+        styles.subChip,
+        active
+          ? { backgroundColor: c.primary, borderColor: c.primary }
+          : { backgroundColor: "transparent", borderColor: c.border },
+      ]}>
+        <AppText style={[styles.subChipText, { color: active ? "#fff" : c.textSub }]}>
+          {label}
+        </AppText>
+      </View>
+    </Pressable>
+  );
+}
 
-  // ── Category state ──────────────────────────────────────────────────────────
-  const [parentCategories, setParentCategories] = useState<Category[]>([]);
-  const [childCategories, setChildCategories] = useState<Category[]>([]);
-  const [selectedParentId, setSelectedParentId] = useState<number | null>(null);
+// ─── Main ─────────────────────────────────────────────────────────────────────
+export default function CategoriesScreen() {
+  const { c } = useTheme();
+  const insets = useSafeAreaInsets();
+  const cartCount = useSelector(selectCartCount);
+
+  const [parentCats, setParentCats] = useState<Category[]>([]);
+  const [childCats, setChildCats]   = useState<Category[]>([]);
+  const [selParent, setSelParent]   = useState<number | null>(null);
+  const [selSub, setSelSub]         = useState<string>("all");
+  const [products, setProducts]     = useState<CatalogProduct[]>([]);
   const [loadingParent, setLoadingParent] = useState(true);
-  const [loadingChild, setLoadingChild] = useState(false);
-
-  // ── Product state ───────────────────────────────────────────────────────────
-  const [activeSubCat, setActiveSubCat] = useState<string>("all");
-
-  const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [loadingChild, setLoadingChild]   = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const [page, setPage] = useState(1);
-  const [productError, setProductError] = useState<string | null>(null);
+  const [hasMore, setHasMore]       = useState(true);
+  const [page, setPage]             = useState(1);
+  const [searchText, setSearchText] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
 
-  const pageRef = useRef(1);
-  const hasMoreRef = useRef(true);
   const fetchingRef = useRef(false);
-  const isFirstProductLoad = useRef(true);
-  pageRef.current = page;
+  const pageRef     = useRef(1);
+  const hasMoreRef  = useRef(true);
+  pageRef.current   = page;
   hasMoreRef.current = hasMore;
 
-  // ── Load parent categories ──────────────────────────────────────────────────
+  // ── Load parents ────────────────────────────────────────────────────────────
   useEffect(() => {
-    const loadParentCategories = async () => {
+    (async () => {
       try {
         const parents = await getCategories();
-        setParentCategories(parents);
+        setParentCats(parents);
         if (parents.length > 0) {
-          setSelectedParentId(parents[0].id);
-          loadChildCategoriesFor(parents[0].id);
+          setSelParent(parents[0].id);
+          loadChildren(parents[0].id);
         }
-      } catch (error) {
-        console.warn("Load parent categories failed", error);
+      } catch (e) {
+        console.warn("getCategories failed", e);
       } finally {
         setLoadingParent(false);
       }
-    };
-    loadParentCategories();
+    })();
   }, []);
 
-  // ── Load child categories ───────────────────────────────────────────────────
-  const loadChildCategoriesFor = async (parentId: number) => {
+  const loadChildren = async (parentId: number) => {
+    setLoadingChild(true);
     try {
-      setLoadingChild(true);
-      const children = await getSubCategories(parentId);
-      setChildCategories(children);
-    } catch (error) {
-      console.warn("Load child categories failed", error);
-      setChildCategories([]);
+      const subs = await getSubCategories(parentId);
+      setChildCats(subs);
+    } catch (e) {
+      setChildCats([]);
     } finally {
       setLoadingChild(false);
     }
   };
 
-  const handleParentPress = (parentId: number) => {
-    if (parentId === selectedParentId) return;
-    setSelectedParentId(parentId);
-    setActiveSubCat("all");
+  const handleParentPress = (id: number) => {
+    if (id === selParent) return;
+    setSelParent(id);
+    setSelSub("all");
     setProducts([]);
     setPage(1);
     setHasMore(true);
-    isFirstProductLoad.current = true;
-    loadChildCategoriesFor(parentId);
+    setSearchText("");
+    loadChildren(id);
   };
 
   // ── Load products ───────────────────────────────────────────────────────────
-  const loadProducts = useCallback(
-    async (
-      parentId: number,
-      pageNum: number,
-      append: boolean,
-      subCatId: string
-    ) => {
-      if (fetchingRef.current) return;
-      fetchingRef.current = true;
-      if (!append) setLoadingProducts(true);
-      try {
-        const filterSubId =
-          subCatId !== "all" ? Number(subCatId) : undefined;
-        const result = await getProductsByCategory(
-          parentId,
-          pageNum,
-          PAGE_SIZE,
-          filterSubId
-        );
-        const items = result.items ?? [];
-        const lastPage = result.lastPage ?? 1;
-
-        if (append) {
-          setProducts((prev) => {
-            const existingIds = new Set(
-              prev.map((p) => String(p.productId ?? p.id))
-            );
-            const newItems = items.filter(
-              (p) => !existingIds.has(String(p.productId ?? p.id))
-            );
-            return [...prev, ...newItems];
-          });
-        } else {
-          setProducts(items);
-        }
-        setPage(pageNum);
-        setHasMore(pageNum < lastPage);
-        setProductError(null);
-      } catch (e: any) {
-        setProductError(e?.message ?? "Không thể tải sản phẩm");
-      } finally {
-        fetchingRef.current = false;
-        setLoadingProducts(false);
-      }
-    },
-    []
-  );
-
-  useEffect(() => {
-    if (selectedParentId == null) return;
-    loadProducts(selectedParentId, 1, false, "all");
-  }, [selectedParentId]);
-
-  useEffect(() => {
-    if (isFirstProductLoad.current) {
-      isFirstProductLoad.current = false;
-      return;
+  const loadProducts = useCallback(async (
+    parentId: number, pageNum: number, append: boolean, subCat: string,
+  ) => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+    if (!append) setLoadingProducts(true);
+    try {
+      const subId = subCat !== "all" ? Number(subCat) : undefined;
+      const result = await getProductsByCategory(parentId, pageNum, PAGE_SIZE, subId);
+      const items = result.items ?? [];
+      const lastPage = result.lastPage ?? 1;
+      setProducts(prev => append ? [...prev, ...items] : items);
+      setPage(pageNum);
+      setHasMore(pageNum < lastPage);
+    } catch (e: any) {
+      console.warn("getProductsByCategory failed:", e?.message);
+    } finally {
+      fetchingRef.current = false;
+      setLoadingProducts(false);
     }
-    if (selectedParentId == null) return;
+  }, []);
+
+  useEffect(() => {
+    if (selParent == null) return;
     setProducts([]);
     setPage(1);
     setHasMore(true);
-    loadProducts(selectedParentId, 1, false, activeSubCat);
-  }, [activeSubCat]);
+    loadProducts(selParent, 1, false, selSub);
+  }, [selParent, selSub]);
 
   const handleRefresh = async () => {
-    if (selectedParentId == null) return;
+    if (selParent == null) return;
     setRefreshing(true);
     setProducts([]);
     setPage(1);
     setHasMore(true);
-    await loadChildCategoriesFor(selectedParentId);
-    await loadProducts(selectedParentId, 1, false, activeSubCat);
+    await loadChildren(selParent);
+    await loadProducts(selParent, 1, false, selSub);
     setRefreshing(false);
   };
 
   const handleLoadMore = () => {
-    if (!hasMoreRef.current || fetchingRef.current || selectedParentId == null)
-      return;
-    loadProducts(selectedParentId, pageRef.current + 1, true, activeSubCat);
+    if (!hasMoreRef.current || fetchingRef.current || selParent == null) return;
+    loadProducts(selParent, pageRef.current + 1, true, selSub);
   };
 
-  const handleCardPress = (item: CatalogProduct) =>
-    router.push({
-      pathname: "/course/[id]",
-      params: { id: item.productId ?? item.id, source: "liferay" },
-    });
+  // ── Filtered products (local search) ────────────────────────────────────────
+  const filtered = searchText.trim()
+    ? products.filter(p => p.name?.toLowerCase().includes(searchText.toLowerCase()))
+    : products;
 
-  // ── Render helpers ──────────────────────────────────────────────────────────
-  const renderParentItem = (category: Category) => {
-    const active = category.id === selectedParentId;
-
-    return (
-      <Pressable
-        key={category.id}
-        onPress={() => handleParentPress(category.id)}
-        style={[
-          styles.parentItem,
-          {
-            backgroundColor: active ? c.primary + "12" : "transparent",
-            borderRightWidth: active ? 2.5 : 0,
-            borderRightColor: c.primary,
-            borderBottomColor: c.border,
-          },
-        ]}
-      >
-        <View
-          style={[
-            styles.parentIconWrap,
-            {
-              backgroundColor: active ? c.primary : c.bg,
-              borderColor: active ? c.primary : c.border,
-            },
-          ]}
-        >
-          {category.imageUrl ? (
-            <CategoryImage
-              url={category.imageUrl}
-              size={26}
-              borderRadius={6}
-              name={category.name}
-              tintColor={active ? "#fff" : c.primary}
-            />
-          ) : (
-            <Text
-              style={{
-                fontSize: 13,
-                fontWeight: "800",
-                color: active ? "#fff" : c.primary,
-              }}
-            >
-              {(category.name?.[0] ?? "?").toUpperCase()}
-            </Text>
-          )}
-        </View>
-
-        <AppText
-          style={[
-            styles.parentText,
-            {
-              color: active ? c.primary : c.textSub,
-              fontWeight: active ? "700" : "400",
-            },
-          ]}
-          numberOfLines={2}
-        >
-          {category.name}
-        </AppText>
-      </Pressable>
-    );
-  };
-
-  const SubCategoryBar = (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={[
-        styles.filterBar,
-        { paddingHorizontal: CARD_H_PAD, gap: Spacing.xs },
-      ]}
-    >
-      <SubCategoryChip
-        label="Tất cả"
-        active={activeSubCat === "all"}
-        onPress={() => setActiveSubCat("all")}
+  // ── Renders ─────────────────────────────────────────────────────────────────
+  const renderCard = ({ item, index }: { item: CatalogProduct; index: number }) => (
+    <View style={[styles.cardWrap, { width: CARD_W }, index % 2 === 1 && { marginLeft: CARD_GAP }]}>
+      <CourseCard
+        course={item}
+        onPress={() => router.push({ pathname: "/course/[id]", params: { id: item.productId ?? item.id, source: "liferay" } })}
       />
-      {childCategories.map((sub) => (
-        <SubCategoryChip
-          key={String(sub.id)}
-          label={sub.name}
-          active={activeSubCat === String(sub.id)}
-          onPress={() => setActiveSubCat(String(sub.id))}
-        />
-      ))}
-    </ScrollView>
-  );
-
-  const ProductSkeleton = (
-    <View style={styles.skeletonGrid}>
-      {Array.from({ length: 4 }).map((_, i) => (
-        <View key={i} style={styles.skeletonRow}>
-          <Skeleton height={160} width={CARD_WIDTH} style={{ borderRadius: 10 }} />
-          <Skeleton height={160} width={CARD_WIDTH} style={{ borderRadius: 10 }} />
-        </View>
-      ))}
     </View>
   );
-
-  const renderProduct = ({
-    item,
-    index,
-  }: {
-    item: CatalogProduct;
-    index: number;
-  }) => {
-    const isRight = index % NUM_COLUMNS === 1;
-    return (
-      <View
-        style={[
-          styles.cardWrapper,
-          { width: CARD_WIDTH },
-          isRight && { marginLeft: CARD_GAP },
-        ]}
-      >
-        <CourseCard course={item} onPress={() => handleCardPress(item)} />
-      </View>
-    );
-  };
 
   const ListHeader = (
-    <View style={[styles.listHeader, { borderBottomColor: c.border }]}>
-      {childCategories.length > 0 && SubCategoryBar}
+    <View>
+      {/* Sub-category chips */}
+      {childCats.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.subChipList}
+        >
+          <SubChip label="Tất cả" active={selSub === "all"} onPress={() => setSelSub("all")} />
+          {childCats.map(sub => (
+            <SubChip
+              key={String(sub.id)}
+              label={sub.name}
+              active={selSub === String(sub.id)}
+              onPress={() => setSelSub(String(sub.id))}
+            />
+          ))}
+        </ScrollView>
+      )}
+      {/* Result count */}
+      <View style={[styles.countBar, { borderBottomColor: c.border }]}>
+        <AppText style={[styles.countText, { color: c.textSub }]}>
+          {filtered.length} khóa học
+        </AppText>
+      </View>
     </View>
   );
 
-  // ── Right panel ────────────────────────────────────────────────────────────
-  const renderRightPanel = () => {
-    if (loadingChild) {
-      return (
-        <View style={styles.centerBox}>
-          <ActivityIndicator size="small" color={c.primary} />
-        </View>
-      );
-    }
+  const Skeleton2 = () => (
+    <View style={styles.skeletonRow}>
+      <Skeleton height={190} width={CARD_W} style={{ borderRadius: 10 }} />
+      <Skeleton height={190} width={CARD_W} style={{ borderRadius: 10, marginLeft: CARD_GAP }} />
+    </View>
+  );
 
-    if (productError && products.length === 0 && !loadingProducts) {
-      return (
-        <View style={styles.centerBox}>
-          <AppText style={{ fontSize: 28 }}>⚠️</AppText>
-          <AppText
-            variant="bodySmall"
-            style={{ color: c.textSub, textAlign: "center", marginTop: 6 }}
-          >
-            {productError}
-          </AppText>
-          <TouchableOpacity
-            style={[styles.retryBtn, { backgroundColor: c.primary }]}
-            onPress={handleRefresh}
-          >
-            <AppText style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>
-              Thử lại
-            </AppText>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    return (
-      <FlatList
-        data={products}
-        keyExtractor={(item, index) =>
-          `product-${String(item.productId ?? item.id ?? "")}-${index}`
-        }
-        numColumns={NUM_COLUMNS}
-        contentContainerStyle={styles.gridContent}
-        columnWrapperStyle={[
-          styles.gridRow,
-          { paddingHorizontal: CARD_H_PAD },
-        ]}
-        renderItem={renderProduct}
-        ListHeaderComponent={ListHeader}
-        ListEmptyComponent={
-          loadingProducts ? (
-            ProductSkeleton
-          ) : (
-            <View style={styles.emptyState}>
-              <AppText style={{ fontSize: 26 }}>🔎</AppText>
-              <AppText
-                variant="bodySmall"
-                style={{ color: c.textSub, textAlign: "center", marginTop: 6 }}
-              >
-                Chưa có khóa học trong danh mục này
-              </AppText>
-            </View>
-          )
-        }
-        ListFooterComponent={
-          hasMore && products.length > 0 ? (
-            <TouchableOpacity
-              style={[
-                styles.loadMoreBtn,
-                {
-                  borderColor: c.primary,
-                  backgroundColor: c.primary + "10",
-                  marginHorizontal: CARD_H_PAD,
-                },
-              ]}
-              onPress={handleLoadMore}
-              disabled={fetchingRef.current}
-            >
-              {fetchingRef.current ? (
-                <ActivityIndicator size="small" color={c.primary} />
-              ) : (
-                <AppText
-                  variant="bodySmall"
-                  style={{ color: c.primary, fontWeight: "600" }}
-                >
-                  Xem thêm ↓
-                </AppText>
-              )}
-            </TouchableOpacity>
-          ) : products.length > 0 ? (
-            <View style={[styles.endRow, { paddingHorizontal: CARD_H_PAD }]}>
-              <View style={[styles.endLine, { backgroundColor: c.border }]} />
-              <AppText variant="caption" style={{ color: c.textSub }}>
-                Đã hiển thị tất cả
-              </AppText>
-              <View style={[styles.endLine, { backgroundColor: c.border }]} />
-            </View>
-          ) : null
-        }
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={c.primary}
-            colors={[c.primary]}
-          />
-        }
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.4}
-        showsVerticalScrollIndicator={false}
-      />
-    );
-  };
-
-  // ── Root render ─────────────────────────────────────────────────────────────
   return (
-    <View style={[styles.safeArea, { backgroundColor: c.bg }]}>
-      <AppHeader showBack showCart title="Danh mục" />
+    <View style={[styles.screen, { backgroundColor: c.bg }]}>
+      {/* ── Top bar ── */}
+      <View style={[styles.topBar, { paddingTop: insets.top + 6, backgroundColor: c.bg, borderBottomColor: c.border }]}>
+        {/* Search */}
+        <View style={[styles.searchWrap, { backgroundColor: c.bgSoft, borderColor: searchFocused ? c.primary : c.border }]}>
+          <Ionicons name="search-outline" size={16} color={searchFocused ? c.primary : c.textSub} style={{ marginLeft: 10 }} />
+          <TextInput
+            style={[styles.searchInput, { color: c.text }]}
+            value={searchText}
+            onChangeText={setSearchText}
+            placeholder="Tìm trong danh mục..."
+            placeholderTextColor={c.textSub}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
+            returnKeyType="search"
+          />
+          {searchText.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchText("")} style={styles.clearIcon}>
+              <Ionicons name="close-circle" size={16} color={c.textSub} />
+            </TouchableOpacity>
+          )}
+        </View>
+        {/* Cart */}
+        <TouchableOpacity style={styles.cartBtn} onPress={() => router.push("/cart")} activeOpacity={0.8}>
+          <Ionicons name="cart-outline" size={22} color={c.text} />
+          {cartCount > 0 && (
+            <View style={[styles.cartBadge, { backgroundColor: c.primary }]}>
+              <AppText style={styles.cartBadgeText}>{cartCount > 9 ? "9+" : cartCount}</AppText>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
 
-      <View style={[styles.container, { borderTopColor: c.border }]}>
-        {/* ── Left: parent categories ── */}
-        <View style={[styles.parentBox, { backgroundColor: c.bgSoft }]}>
+      {/* ── Body: sidebar + content ── */}
+      <View style={styles.body}>
+        {/* ── Left sidebar: danh mục cha ── */}
+        <View style={[styles.sidebar, { borderRightColor: c.border, backgroundColor: c.bgSoft }]}>
           {loadingParent ? (
-            <View style={styles.centerBox}>
+            <View style={styles.sideCenter}>
               <ActivityIndicator size="small" color={c.primary} />
             </View>
           ) : (
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {parentCategories.map(renderParentItem)}
+            <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+              {parentCats.map(cat => (
+                <ParentItem
+                  key={cat.id}
+                  cat={cat}
+                  active={cat.id === selParent}
+                  onPress={() => handleParentPress(cat.id)}
+                />
+              ))}
             </ScrollView>
           )}
         </View>
 
-        {/* ── Divider ── */}
-        <View style={[styles.divider, { backgroundColor: c.border }]} />
-
-        {/* ── Right: subcategory chips + products ── */}
-        <View style={styles.rightBox}>{renderRightPanel()}</View>
+        {/* ── Right: sub-chips + products ── */}
+        <View style={styles.right}>
+          {loadingProducts && products.length === 0 ? (
+            <View style={styles.skeletonWrap}>
+              <Skeleton2 />
+              <Skeleton2 />
+              <Skeleton2 />
+            </View>
+          ) : (
+            <FlatList
+              data={filtered}
+              keyExtractor={(item, i) => `${item.productId ?? item.id}-${i}`}
+              numColumns={NUM_COLS}
+              contentContainerStyle={styles.gridContent}
+              columnWrapperStyle={styles.columnWrapper}
+              renderItem={renderCard}
+              ListHeaderComponent={ListHeader}
+              ListEmptyComponent={
+                !loadingProducts ? (
+                  <View style={styles.emptyState}>
+                    <Ionicons name="book-outline" size={36} color={c.border} />
+                    <AppText style={[styles.emptyText, { color: c.textSub }]}>
+                      {searchText ? "Không tìm thấy khóa học" : "Chưa có khóa học"}
+                    </AppText>
+                  </View>
+                ) : null
+              }
+              ListFooterComponent={
+                hasMore && filtered.length > 0 ? (
+                  <TouchableOpacity
+                    style={[styles.loadMoreBtn, { borderColor: c.border }]}
+                    onPress={handleLoadMore}
+                    disabled={fetchingRef.current}
+                  >
+                    {fetchingRef.current
+                      ? <ActivityIndicator size="small" color={c.primary} />
+                      : <><AppText style={[styles.loadMoreText, { color: c.primary }]}>Xem thêm</AppText>
+                          <Ionicons name="chevron-down" size={14} color={c.primary} /></>
+                    }
+                  </TouchableOpacity>
+                ) : filtered.length > 0 ? (
+                  <View style={[styles.endRow, { borderTopColor: c.border }]}>
+                    <AppText style={[styles.endText, { color: c.textSub }]}>Đã hiển thị tất cả</AppText>
+                  </View>
+                ) : null
+              }
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={c.primary} colors={[c.primary]} />
+              }
+              onEndReached={handleLoadMore}
+              onEndReachedThreshold={0.4}
+              showsVerticalScrollIndicator={false}
+            />
+          )}
+        </View>
       </View>
     </View>
   );
-};
-
-export default Categories;
+}
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
+  screen: { flex: 1 },
 
-  container: {
+  // Top bar
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingBottom: 10,
+    paddingHorizontal: 10,
+    gap: 8,
+    borderBottomWidth: 0.5,
+  },
+  searchWrap: {
     flex: 1,
     flexDirection: "row",
-    borderTopWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 6,
   },
+  searchInput: { flex: 1, height: 40, fontSize: 13, paddingRight: 10 },
+  clearIcon: { paddingRight: 8 },
+  cartBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  cartBadge: {
+    position: "absolute", top: 4, right: 4,
+    minWidth: 16, height: 16, borderRadius: 8,
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 3,
+  },
+  cartBadgeText: { color: "#fff", fontSize: 9, fontWeight: "700" },
 
-  // ── Left panel ──
-  parentBox: { width: PARENT_BOX_WIDTH },
+  // Body
+  body: { flex: 1, flexDirection: "row" },
 
+  // Sidebar
+  sidebar: {
+    width: SIDEBAR_W,
+    borderRightWidth: StyleSheet.hairlineWidth,
+  },
+  sideCenter: { flex: 1, alignItems: "center", justifyContent: "center" },
+
+  // ParentItem
   parentItem: {
-    paddingVertical: Spacing.xs + 2,
-    paddingHorizontal: 5,
     alignItems: "center",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 4,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    gap: 5,
+    position: "relative",
   },
-
-  parentIconWrap: {
-    width: 38,
-    height: 38,
+  parentIcon: {
+    width: 40, height: 40,
     borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
+    alignItems: "center", justifyContent: "center",
     borderWidth: 1,
     overflow: "hidden",
   },
-
-  parentText: {
-    fontSize: 10,
+  parentLabel: {
+    fontSize: 9.5,
     textAlign: "center",
     lineHeight: 13,
   },
-
-  divider: { width: StyleSheet.hairlineWidth },
-
-  // ── Right panel ──
-  rightBox: { flex: 1 },
-
-  // ── List header (chip bar) ──
-  listHeader: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingVertical: Spacing.xs,
+  activeDot: {
+    position: "absolute",
+    right: 2, top: "50%",
+    width: 4, height: 4, borderRadius: 2,
+    transform: [{ translateY: -2 }],
   },
 
-  // ── Subcategory chip bar ──
-  filterBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: Spacing.xs,
+  // Right panel
+  right: { flex: 1 },
+
+  // Sub chips
+  subChipList: { paddingHorizontal: H_PAD, paddingVertical: 9, gap: 6 },
+  subChip: {
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    borderRadius: 16,
+    borderWidth: 1,
   },
+  subChipText: { fontSize: 11.5, fontWeight: "500" },
 
-  // ── Product grid ──
-  gridContent: { paddingBottom: Spacing["3xl"] },
-  gridRow: { justifyContent: "flex-start" },
-  cardWrapper: { marginBottom: CARD_GAP },
+  // Count bar
+  countBar: {
+    paddingHorizontal: H_PAD,
+    paddingBottom: 6,
+    borderBottomWidth: 0.5,
+    marginBottom: 6,
+  },
+  countText: { fontSize: 11 },
 
-  // ── Skeleton ──
-  skeletonGrid: { padding: CARD_H_PAD, gap: CARD_GAP },
-  skeletonRow: { flexDirection: "row", gap: CARD_GAP },
+  // Grid
+  gridContent: { paddingBottom: 40 },
+  columnWrapper: { paddingHorizontal: H_PAD, marginBottom: CARD_GAP },
+  cardWrap: {},
 
-  // ── Load more / end ──
+  // Skeleton
+  skeletonWrap: { padding: H_PAD, gap: CARD_GAP },
+  skeletonRow: { flexDirection: "row", gap: CARD_GAP, marginBottom: CARD_GAP },
+
+  // Empty
+  emptyState: { alignItems: "center", paddingTop: 50, gap: 10 },
+  emptyText: { fontSize: 13, textAlign: "center" },
+
+  // Footer
   loadMoreBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    paddingVertical: Spacing.sm,
-    marginVertical: Spacing.md,
-    borderRadius: 10,
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 5, borderWidth: 1, borderRadius: 10,
+    paddingVertical: 9,
+    marginHorizontal: H_PAD,
+    marginVertical: 12,
   },
+  loadMoreText: { fontSize: 12.5, fontWeight: "600" },
   endRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.sm,
-    paddingVertical: Spacing.lg,
+    alignItems: "center", paddingVertical: 16,
+    borderTopWidth: 0.5,
+    marginHorizontal: H_PAD, marginTop: 8,
   },
-  endLine: { flex: 1, height: 1 },
-
-  // ── Empty / Error ──
-  emptyState: {
-    alignItems: "center",
-    paddingTop: Spacing["3xl"],
-    paddingHorizontal: Spacing.lg,
-  },
-  centerBox: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: Spacing.md,
-    gap: Spacing.sm,
-  },
-  retryBtn: {
-    marginTop: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.xs + 2,
-    borderRadius: 8,
-  },
+  endText: { fontSize: 11 },
 });
+

@@ -9,13 +9,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   FlatList,
-  SafeAreaView,
   StyleSheet,
+  TouchableOpacity,
   View,
   useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { C, Colors, Radius, Spacing, Typography } from '@/src/theme';
+import { Colors, Spacing, Typography } from '@/src/theme';
 
 interface Slide {
   id: string
@@ -28,117 +29,113 @@ interface Slide {
 const slides: Slide[] = [
   {
     id: '01',
-    title: 'Bắt đầu trải nghiệm với chúng tôi',
+    title: 'Khám phá thế giới mua sắm',
     description:
-      'Truy cập 500+ khóa học chất lượng từ các chuyên gia hàng đầu. Kiến thức luôn sẵn sàng chỉ với một chạm.',
-    icon: 'book',
+      'Truy cập hàng ngàn sản phẩm chất lượng từ các thương hiệu hàng đầu. Mua sắm dễ dàng chỉ với một chạm.',
+    icon: 'bag-handle', // Hoặc 'cart' tùy icon set của má nha
     color: Colors.info,
   },
   {
     id: '02',
-    title: 'Đánh giá năng lực tức thì',
+    title: 'Thanh toán an toàn, bảo mật',
     description:
-      'Trải nghiệm phòng thi chuyên nghiệp với công nghệ chống gian lận thông minh. Nắm rõ điểm mạnh, yếu của bạn.',
+      'Trải nghiệm hệ thống thanh toán siêu tốc với công nghệ bảo mật thông minh. Bảo vệ quyền lợi mua sắm của bạn.',
     icon: 'shield-checkmark',
     color: Colors.primary[500],
   },
   {
     id: '03',
-    title: 'Nhận chứng chỉ danh giá',
+    title: 'Ưu đãi ngập tràn, ship liền tay',
     description:
-      'Hoàn thành khóa học và nhận chứng chỉ được công nhận. Mở rộng cơ hội nghề nghiệp tương lai ngay hôm nay.',
-    icon: 'ribbon',
+      'Nhận ngay voucher độc quyền và miễn phí vận chuyển mỗi ngày. Theo dõi đơn hàng dễ dàng, giao hàng nhanh chóng.',
+    icon: 'gift', // Hoặc 'paper-plane', 'truck' nè
     color: Colors.accent[500],
   },
-]
+];
 
 export default function OnboardingScreen() {
-  const router = useRouter()
-  const { width: screenWidth } = useWindowDimensions()
-  const [activeIndex, setActiveIndex] = useState(0)
-  const scrollViewRef = useRef<FlatList>(null)
-  const fadeAnim = useRef(new Animated.Value(0)).current
-  const scaleAnim = useRef(new Animated.Value(0.8)).current
+  const router = useRouter();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const [activeIndex, setActiveIndex] = useState(0);
+  const scrollViewRef = useRef<FlatList>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.8)).current;
 
-  // Responsive scale factor (giới hạn để không quá to trên tablet)
-  const BASE_WIDTH = 390 // iPhone 14
-  const scale = useMemo(() => Math.min(screenWidth / BASE_WIDTH, 1.5), [screenWidth])
+  // Tỉ lệ responsive
+  const scale = useMemo(() => Math.min(screenWidth / 390, 1.3), [screenWidth]);
 
-  // Các kích thước được scale
-  const iconSize = 150 * scale
-  const iconMarginTop = Spacing['2xl'] * scale
-  const iconMarginBottom = Spacing.xl * scale
-  const horizontalPadding = Spacing.xl * scale
-  const titleFontSize = (Typography.sizes['2xl'] || 24) * scale
-  const descriptionFontSize = (Typography.sizes.md || 16) * scale
-  const dotSize = 10 * scale
-  const activeDotWidth = 28 * scale
-  const dotsGap = Spacing.sm * scale
-  const dotsMarginBottom = Spacing.lg * scale
-  const buttonMarginBottom = Spacing[3] * scale
+  // Kích thước linh hoạt theo màn hình
+  const iconSize = Math.min(150 * scale, screenWidth * 0.4);
+  const titleFontSize = Math.min(24 * scale, 32);
+  const descFontSize = Math.min(16 * scale, 20);
+  const dotSize = 10;
+  const activeDotWidth = 28;
 
   // Tự động chuyển slide
   useEffect(() => {
     const interval = setInterval(() => {
       setActiveIndex((prev) => {
-        const nextIndex = (prev + 1) % slides.length
+        const nextIndex = (prev + 1) % slides.length;
         scrollViewRef.current?.scrollToIndex({
           index: nextIndex,
           animated: true,
-        })
-        return nextIndex
-      })
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [])
+        });
+        return nextIndex;
+      });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
-  // Hiệu ứng mờ + scale khi đổi slide
+  // Hiệu ứng khi đổi slide
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 500,
+        duration: 400,
         useNativeDriver: true,
       }),
       Animated.timing(scaleAnim, {
         toValue: 1,
-        duration: 500,
+        duration: 400,
         useNativeDriver: true,
       }),
-    ]).start()
-  }, [activeIndex])
+    ]).start(() => {
+      // Reset scale for next animation
+      scaleAnim.setValue(0.8);
+    });
+  }, [activeIndex]);
 
   const handleNext = () => {
     if (activeIndex === slides.length - 1) {
-      router.push('/welcome')
+      router.push('/welcome');
     } else {
-      const nextIndex = activeIndex + 1
+      const nextIndex = activeIndex + 1;
       scrollViewRef.current?.scrollToIndex({
         index: nextIndex,
         animated: true,
-      })
-      setActiveIndex(nextIndex)
+      });
+      setActiveIndex(nextIndex);
     }
-  }
+  };
 
   const handleSkip = () => {
-    router.push('/welcome')
-  }
+    router.push('/welcome');
+  };
 
   const handleDotPress = (index: number) => {
     scrollViewRef.current?.scrollToIndex({
       index,
       animated: true,
-    })
-    setActiveIndex(index)
-  }
+    });
+    setActiveIndex(index);
+  };
 
-  const currentSlide = slides[activeIndex]
-  const progress = ((activeIndex + 1) / slides.length) * 100
+  const currentSlide = slides[activeIndex];
+  const progress = ((activeIndex + 1) / slides.length) * 100;
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Progress Bar (giữ nguyên chiều cao nhỏ) */}
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Progress Bar */}
       <View style={styles.progressBarContainer}>
         <View
           style={[
@@ -161,60 +158,67 @@ export default function OnboardingScreen() {
         scrollEventThrottle={16}
         showsHorizontalScrollIndicator={false}
         style={styles.flatList}
-        contentContainerStyle={{ flexGrow: 1 }}
         onMomentumScrollEnd={(event) => {
-          const contentOffsetX = event.nativeEvent.contentOffset.x
-          const currentIndex = Math.round(contentOffsetX / screenWidth)
+          const contentOffsetX = event.nativeEvent.contentOffset.x;
+          const currentIndex = Math.round(contentOffsetX / screenWidth);
           if (currentIndex !== activeIndex) {
-            setActiveIndex(currentIndex)
-            fadeAnim.setValue(0)
-            scaleAnim.setValue(0.8)
+            setActiveIndex(currentIndex);
+            fadeAnim.setValue(0);
           }
         }}
         renderItem={({ item }) => (
-          <View style={[styles.slideContainer, { paddingHorizontal: horizontalPadding }]}>
+          <View style={[styles.slideContainer, { width: screenWidth }]}>
             <Animated.View
               style={[
-                styles.iconContainerBase,
+                styles.iconContainer,
                 {
                   width: iconSize,
                   height: iconSize,
-                  borderRadius: iconSize / 2, // luôn tròn
-                  marginTop: iconMarginTop,
-                  marginBottom: iconMarginBottom,
+                  borderRadius: iconSize / 2,
                   backgroundColor: item.color,
                   opacity: fadeAnim,
                   transform: [{ scale: scaleAnim }],
                 },
               ]}
             >
-              <Ionicons name={item.icon} size={iconSize * 0.45} color={Colors.neutral[0]} />
-              <View style={[styles.badgeBase, {
-                width: iconSize * 0.3,
-                height: iconSize * 0.3,
-                borderRadius: iconSize * 0.15,
-                top: -iconSize * 0.08,
-                right: -iconSize * 0.08,
-              }]}>
-                <AppText style={{ fontSize: iconSize * 0.12, fontFamily: Typography.fonts.bold, color: item.color }}>
+              <Ionicons name={item.icon} size={iconSize * 0.45} color="#fff" />
+              <View
+                style={[
+                  styles.badge,
+                  {
+                    width: iconSize * 0.3,
+                    height: iconSize * 0.3,
+                    borderRadius: iconSize * 0.15,
+                  },
+                ]}
+              >
+                <AppText
+                  style={[
+                    styles.badgeText,
+                    {
+                      fontSize: iconSize * 0.14,
+                      color: item.color,
+                    },
+                  ]}
+                >
                   {item.id}
                 </AppText>
               </View>
             </Animated.View>
 
-            <Animated.View style={{ opacity: fadeAnim }}>
+            <Animated.View style={[styles.textContainer, { opacity: fadeAnim }]}>
               <AppText
                 variant="h2"
                 align="center"
-                style={[styles.title, { fontSize: titleFontSize, marginBottom: Spacing.md * scale }]}
-                numberOfLines={3}
+                style={[styles.title, { fontSize: titleFontSize }]}
+                numberOfLines={2}
               >
                 {item.title}
               </AppText>
               <AppText
                 variant="body"
                 align="center"
-                style={[styles.description, { fontSize: descriptionFontSize }]}
+                style={[styles.description, { fontSize: descFontSize }]}
                 numberOfLines={4}
               >
                 {item.description}
@@ -225,68 +229,68 @@ export default function OnboardingScreen() {
       />
 
       {/* Bottom Section */}
-      <View style={[styles.bottomContainer, { paddingHorizontal: horizontalPadding }]}>
+      <View style={styles.bottomContainer}>
         {/* Dot Indicators */}
-        <View style={[styles.dotsContainer, { gap: dotsGap, marginBottom: dotsMarginBottom }]}>
+        <View style={styles.dotsContainer}>
           {slides.map((_, index) => (
-            <AppButton
+            <TouchableOpacity
               key={index}
               onPress={() => handleDotPress(index)}
-              style={{
-                height: dotSize,
-                width: index === activeIndex ? activeDotWidth : dotSize,
-                borderRadius: dotSize / 2,
-                backgroundColor: index === activeIndex ? currentSlide.color : C.border,
-              }}
+              activeOpacity={0.7}
+              style={[
+                styles.dot,
+                {
+                  width: index === activeIndex ? activeDotWidth : dotSize,
+                  height: dotSize,
+                  borderRadius: dotSize / 2,
+                  backgroundColor:
+                    index === activeIndex ? currentSlide.color : Colors.neutral[300],
+                },
+              ]}
             />
           ))}
         </View>
 
         <AppDivider spacing={Spacing.md} />
 
-        {/* Nút chính (màu đỏ cố định) */}
+        {/* Nút chính */}
         <AppButton
+          title={activeIndex === slides.length - 1 ? 'Bắt đầu ngay' : 'Tiếp tục'}
           onPress={handleNext}
-          style={[
-            styles.button,
-            {
-              backgroundColor: Colors.primary[500],
-              marginBottom: buttonMarginBottom,
-              borderRadius: Radius.xl * scale,
-            },
-          ]}
+          style={{
+            backgroundColor: Colors.primary[500],
+            borderRadius: Spacing.borderRadius.xl,
+            minHeight: 52,
+            width: '100%',
+          }}
           textStyle={styles.buttonText}
-        >
-          {activeIndex === slides.length - 1 ? 'Bắt đầu ngay' : 'Tiếp tục'}
-        </AppButton>
+        />
 
         {activeIndex < slides.length - 1 && (
-          <AppButton
-            onPress={handleSkip}
-            mode="text"
-            style={styles.skipButton}
-            textStyle={[styles.skipButtonText, { fontSize: descriptionFontSize }]}
-          >
-            Bỏ qua
-          </AppButton>
+          <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
+            <AppText variant="body" style={styles.skipText}>
+              Bỏ qua
+            </AppText>
+          </TouchableOpacity>
         )}
       </View>
     </SafeAreaView>
-  )
+  );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: C.bgSoft,
+    backgroundColor: Colors.background.primary,
   },
   progressBarContainer: {
-    height: Spacing.xs,
-    backgroundColor: C.border,
+    height: 4,
+    backgroundColor: Colors.neutral[200],
     overflow: 'hidden',
   },
   progressBar: {
     height: '100%',
+    borderRadius: 2,
   },
   flatList: {
     flex: 1,
@@ -295,55 +299,82 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    width: '100%', // sẽ được set bằng screenWidth trong FlatList, nhưng để chắc chắn
+    paddingHorizontal: Spacing.xl,
   },
-  iconContainerBase: {
+  iconContainer: {
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
-    shadowColor: Colors.neutral[1000],
-    shadowOffset: { width: 0, height: 4 },
+    shadowColor: Colors.neutral[900],
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowRadius: 12,
+    elevation: 6,
+    marginBottom: Spacing.xl,
   },
-  badgeBase: {
+  badge: {
     position: 'absolute',
+    top: -8,
+    right: -8,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.neutral[0],
-    shadowColor: Colors.neutral[1000],
+    backgroundColor: '#fff',
+    shadowColor: Colors.neutral[900],
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
+  badgeText: {
+    fontFamily: Typography.fonts.bold,
+  },
+  textContainer: {
+    width: '100%',
+    alignItems: 'center',
+  },
   title: {
-    color: C.text,
+    color: Colors.neutral[900],
+    marginBottom: Spacing.md,
+    textAlign: 'center',
   },
   description: {
-    color: C.textSub,
+    color: Colors.neutral[500],
+    textAlign: 'center',
+    lineHeight: 24,
   },
   bottomContainer: {
+    paddingHorizontal: Spacing.xl,
     paddingBottom: Spacing.xl,
     paddingTop: Spacing.md,
+    backgroundColor: Colors.background.primary,
   },
   dotsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  dot: {
+    // dynamic via inline style
   },
   button: {
-    borderRadius: Radius.xl,
+    paddingVertical: Spacing.md,
   },
   buttonText: {
-    color: Colors.neutral[0],
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 16,
+    textAlign: 'center',
   },
   skipButton: {
-    backgroundColor: 'transparent',
+    alignSelf: 'center',
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
   },
-  skipButtonText: {
-    color: C.textSub,
+  skipText: {
+    color: Colors.neutral[500],
+    fontSize: 14,
+    fontWeight: '500',
   },
-})
- 
+});
