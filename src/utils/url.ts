@@ -16,15 +16,33 @@ import { ENV } from "../config/env";
  * toAbsoluteUrl("/o/commerce-media/thumbnail/123")
  * // → "http://192.168.2.152:8080/o/commerce-media/thumbnail/123"
  */
+// export function toAbsoluteUrl(url?: string): string {
+//   if (!url) return "";
+//   if (!url.startsWith("http")) {
+//     return `${ENV.API_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+//   }
+
+//   // Đồng bộ protocol (http ↔ https) với BASE_URL
+//   const baseProtocol = ENV.API_URL.startsWith("https") ? "https://" : "http://";
+//   return url.replace(/^https?:\/\//, baseProtocol);
+// }
+
 export function toAbsoluteUrl(url?: string): string {
   if (!url) return "";
-  if (!url.startsWith("http")) {
-    return `${ENV.API_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+
+  // Relative URL
+  if (url.startsWith("/")) {
+    return `${ENV.API_URL}${url}`;
   }
 
-  // Đồng bộ protocol (http ↔ https) với BASE_URL
-  const baseProtocol = ENV.API_URL.startsWith("https") ? "https://" : "http://";
-  return url.replace(/^https?:\/\//, baseProtocol);
+  // Absolute URL từ Liferay cũ
+  try {
+    const parsed = new URL(url);
+
+    return `${ENV.API_URL}${parsed.pathname}${parsed.search}`;
+  } catch {
+    return url;
+  }
 }
 
 /**

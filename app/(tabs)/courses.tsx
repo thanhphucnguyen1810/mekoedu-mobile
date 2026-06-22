@@ -309,7 +309,6 @@ export default function CatalogScreen() {
         <AppHeader
           title="Khóa học"
           showCart
-          showNotification
           isSearchable
           placeholder="Tìm kiếm khóa học..."
           searchQuery={searchText}
@@ -344,11 +343,11 @@ export default function CatalogScreen() {
       <StatusBar barStyle="dark-content" backgroundColor={c.bg} />
 
       <AppHeader
-        title="Khóa học"
+        title="Sản phẩm"
         showCart
-        showNotification
+        // showNotification
         isSearchable
-        placeholder="Tìm kiếm khóa học..."
+        placeholder="Tìm kiếm sản phẩm..."
         searchQuery={searchText}
         onSearchChange={handleSearch}
       />

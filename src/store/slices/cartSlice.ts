@@ -18,6 +18,19 @@ export interface CartItem {
   description?: string;
 }
 
+export interface CartSummary {
+  subtotal: number;
+  subtotalFormatted: string;
+  total: number;
+  totalFormatted: string;
+  discountAmount: number;
+  discountAmountFormatted: string;
+  shippingAmount: number;
+  shippingAmountFormatted: string;
+  taxAmount: number;
+  taxAmountFormatted: string;
+}
+
 export interface Coupon {
   code: string;
   discountType: 'percentage' | 'fixed';
@@ -34,6 +47,7 @@ interface CartState {
   appliedCoupon: Coupon | null;
   syncing: boolean;
   lastSyncedAt: string | null;
+  summary: CartSummary | null;   
 }
 
 // ─── Initial State ────────────────────────────────────────────────────────────
@@ -47,6 +61,7 @@ const initialState: CartState = {
   appliedCoupon: null,
   syncing: false,
   lastSyncedAt: null,
+  summary: null,      
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -179,6 +194,10 @@ const cartSlice = createSlice({
       state.syncing = action.payload;
     },
 
+    setCartSummary(state, action: PayloadAction<CartSummary | null>) {
+      state.summary = action.payload;
+    },
+
     // ── Batch Sync từ Server ──────────────────────────────────────────────────
     /**
      * Gọi sau khi fetch giỏ hàng từ Liferay xong.
@@ -191,6 +210,7 @@ const cartSlice = createSlice({
         items: CartItem[];
         selectedIds?: (string | number)[];
         coupon?: Coupon | null;
+        summary?: CartSummary | null; 
       }>
     ) {
       // ─── Merge: giữ lại name, thumbnail, catalogName từ local ───
@@ -202,10 +222,13 @@ const cartSlice = createSlice({
             ...serverItem,
             name: serverItem.name || local.name,
             thumbnail: serverItem.thumbnail || local.thumbnail,
-            catalogName: serverItem.catalogName || local.catalogName,
+            catalogName: local.catalogName || serverItem.catalogName
           };
         }
-        return serverItem;
+        return {
+          ...serverItem,
+          catalogName: serverItem.catalogName,
+        };
       });
 
       state.cartId = action.payload.cartId;
@@ -215,6 +238,9 @@ const cartSlice = createSlice({
       }
       if (action.payload.coupon !== undefined) {
         state.appliedCoupon = action.payload.coupon;
+      }
+      if (action.payload.summary !== undefined) {        
+        state.summary = action.payload.summary;
       }
       state.lastSyncedAt = new Date().toISOString();
       state.error = null;
@@ -245,6 +271,7 @@ export const {
   setCartLoading,
   setCartError,
   setSyncing,
+  setCartSummary,   
   syncCartFromServer,
   resetCart,
 } = cartSlice.actions;
@@ -323,6 +350,21 @@ export const selectDiscountAmount = createSelector(
   (sub, final) => sub - final
 );
 
+export const selectFinalTotalAll = createSelector(
+  [selectCartTotal, selectAppliedCoupon],
+  (subtotal, coupon) => {
+    if (!coupon || subtotal === 0) return subtotal;
+    if (subtotal < (coupon.minOrderValue ?? 0)) return subtotal;
+    const discount =
+      coupon.discountType === 'percentage'
+        ? (subtotal * coupon.discountValue) / 100
+        : coupon.discountValue;
+    return Math.max(0, subtotal - Math.min(discount, subtotal));
+  }
+);
+ 
+
+
 // ─── Checkout Data ────────────────────────────────────────────────────────────
 
 export const selectCheckoutData = createSelector(
@@ -346,6 +388,37 @@ export const selectCheckoutData = createSelector(
     itemCount: items.reduce((s, i) => s + i.quantity, 0),
   })
 );
+
+export const selectCartSummary = (s: RootState) => s.cart.summary;
+ 
+export const selectCartSubtotalServer = createSelector(
+  [selectCartSummary, selectCartTotal],
+  (summary, fallbackLocal) => summary?.subtotal ?? fallbackLocal
+);
+ 
+export const selectCartFinalTotalServer = createSelector(
+  [selectCartSummary, selectCartTotal],
+  // Nếu summary chưa kịp tải (vd: lần đầu mount, trước khi loadCartFromServer
+  // chạy xong) → tạm thời fallback về tổng tự cộng ở client để UI không bị
+  // trống/giật, NHƯNG sẽ tự thay bằng số server ngay khi summary có giá trị.
+  (summary, fallbackLocal) => summary?.total ?? fallbackLocal
+);
+ 
+export const selectCartDiscountServer = createSelector(
+  [selectCartSummary],
+  (summary) => summary?.discountAmount ?? 0
+);
+ 
+export const selectCartTaxServer = createSelector(
+  [selectCartSummary],
+  (summary) => summary?.taxAmount ?? 0
+);
+ 
+export const selectCartShippingServer = createSelector(
+  [selectCartSummary],
+  (summary) => summary?.shippingAmount ?? 0
+);
+
 
 // ─── Helper Selectors ─────────────────────────────────────────────────────────
 

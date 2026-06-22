@@ -219,7 +219,12 @@ export const CategoryGrid = ({
   return (
     <FlatList
       data={displayData}
-      keyExtractor={(item) => String(item.id)}
+      keyExtractor={(item) => {
+        if (item.isAllButton) {
+          return 'all-categories-button';
+        }
+        return `category-${String(item.id)}`;
+      }}
       horizontal
       showsHorizontalScrollIndicator={false}
       ListHeaderComponent={() => <View style={{ width: VISUAL_PAD }} />}

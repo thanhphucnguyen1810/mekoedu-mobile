@@ -1,8 +1,9 @@
 // app/(auth)/login.tsx
 import { AppButton } from "@/src/components/common";
 import { AppConfig } from "@/src/config/appConfig";
-import { useCartSync } from "@/src/hooks/useCartSync";
+import { clearCartCache } from "@/src/services/cartService";
 import type { AppDispatch, RootState } from "@/src/store";
+import { resetCart } from "@/src/store/slices/cartSlice";
 import { liferayLogin } from "@/src/store/slices/liferayAuthSlice";
 import { useTheme } from "@/src/theme";
 import { Colors } from "@/src/theme/Colors";
@@ -22,16 +23,12 @@ import {
 } from "react-native";
 import { useDispatch, useSelector } from "react-redux";
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 export const validatePassword = (password: string) => ({
   length: password.length >= 8,
   special: /[!@#$%^&*(),.?":{}|<>]/.test(password),
   upper: /[A-Z]/.test(password),
   number: /[0-9]/.test(password),
 });
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
 
 type RequirementItemProps = { text: string; valid: boolean };
 
@@ -48,8 +45,6 @@ const RequirementItem = ({ text, valid }: RequirementItemProps) => (
   </View>
 );
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
-
 export default function LoginScreen() {
   const dispatch = useDispatch<AppDispatch>();
   const { loading, error } = useSelector((s: RootState) => s.liferayAuth);
@@ -62,19 +57,16 @@ export default function LoginScreen() {
   const [passwordFocused, setPasswordFocused] = useState(false);
 
   const passwordRef = useRef<TextInput>(null);
-  const pwdValid = useMemo(() => validatePassword(password), [password]);
-  const showRequirements = passwordFocused && password.length > 0;
 
-  // Lấy text từ config
   const loginText = AppConfig.login;
   const store = AppConfig.store;
 
-  const { loadCartFromServer } = useCartSync();
   const handleLogin = async () => {
     if (!email || !password) return;
     try {
       await dispatch(liferayLogin({ email, password })).unwrap();
-      await loadCartFromServer();
+      clearCartCache();
+      dispatch(resetCart());
       router.replace("/(tabs)/home");
     } catch (err: unknown) {
       console.error("Login error:", err);
@@ -94,7 +86,7 @@ export default function LoginScreen() {
       >
         {/* Logo */}
         <View style={styles.logoContainer}>
-          <Image 
+          <Image
             source={store.logo}
             style={[styles.logoImage, { width: store.logoWidth, height: store.logoHeight }]}
             resizeMode="contain"
@@ -111,9 +103,8 @@ export default function LoginScreen() {
           </View>
         )}
 
-        {/* Form Group */}
+        {/* Form */}
         <View style={styles.formGroup}>
-          {/* Email field */}
           <View style={styles.field}>
             <Text style={styles.label}>{loginText.emailLabel}</Text>
             <View style={styles.inputWrapper}>
@@ -134,7 +125,6 @@ export default function LoginScreen() {
             </View>
           </View>
 
-          {/* Password field */}
           <View style={styles.field}>
             <Text style={styles.label}>{loginText.passwordLabel}</Text>
             <View style={styles.inputWrapper}>
@@ -157,7 +147,6 @@ export default function LoginScreen() {
                 style={styles.eyeBtn}
                 onPress={() => setShowPassword(prev => !prev)}
                 activeOpacity={0.7}
-                accessibilityLabel={showPassword ? loginText.hidePasswordA11y : loginText.showPasswordA11y}
               >
                 <Ionicons
                   name={showPassword ? "eye-outline" : "eye-off-outline"}
@@ -167,7 +156,6 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Quên mật khẩu */}
             <View style={styles.forgotRow}>
               <Link href="/(auth)/forgot-password" asChild>
                 <TouchableOpacity activeOpacity={0.7}>
@@ -175,7 +163,6 @@ export default function LoginScreen() {
                 </TouchableOpacity>
               </Link>
             </View>
-
           </View>
         </View>
 
@@ -203,14 +190,12 @@ export default function LoginScreen() {
   );
 }
 
-// ─── Styles ─────────────────────────────────────────
-
 const inputShadow = Platform.select({
-  ios: { 
-    shadowColor: "#000", 
-    shadowOffset: { width: 0, height: 1 }, 
-    shadowOpacity: 0.05, 
-    shadowRadius: 3 
+  ios: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3
   },
   android: { elevation: 1 },
   default: {},
@@ -218,54 +203,15 @@ const inputShadow = Platform.select({
 
 const createStyles = (theme: ReturnType<typeof useTheme>) =>
   StyleSheet.create({
-    flex: {
-      flex: 1,
-      backgroundColor: theme.c.bg,
-    },
+    flex: { flex: 1, backgroundColor: theme.c.bg },
     container: {
       flexGrow: 1,
       justifyContent: "center",
       paddingHorizontal: theme.spacing.layout.screenHorizontal,
       paddingVertical: theme.spacing.layout.screenVertical,
     },
-
-    // Logo - giống register
-    logoGroup: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: theme.spacing[3],
-      marginBottom: theme.spacing[4],
-    },
-    logoBadge: {
-      width: 46,
-      height: 46,
-      borderRadius: theme.radius.xl,
-      backgroundColor: Colors.primary[500],
-      alignItems: "center",
-      justifyContent: "center",
-      ...Platform.select({
-        ios: { 
-          shadowColor: Colors.primary[600], 
-          shadowOffset: { width: 0, height: 3 }, 
-          shadowOpacity: 0.25, 
-          shadowRadius: 5 
-        },
-        android: { elevation: 4 },
-      }),
-    },
-    logoLetter: {
-      color: Colors.neutral[0],
-      fontSize: 22,
-      fontWeight: "700",
-    },
-    logoText: {
-      fontSize: 26,
-      fontWeight: "800",
-      color: Colors.primary[600],
-      letterSpacing: -0.5,
-    },
-
+    logoContainer: { alignItems: "center", marginBottom: theme.spacing[8] },
+    logoImage: { width: 300, height: 100 },
     title: {
       fontSize: 24,
       fontWeight: "700",
@@ -274,8 +220,6 @@ const createStyles = (theme: ReturnType<typeof useTheme>) =>
       marginBottom: theme.spacing[6],
       letterSpacing: -0.3,
     },
-
-    // Error banner
     errorBanner: {
       flexDirection: "row",
       alignItems: "center",
@@ -287,21 +231,9 @@ const createStyles = (theme: ReturnType<typeof useTheme>) =>
       padding: theme.spacing[3],
       marginBottom: theme.spacing[4],
     },
-    errorText: {
-      flex: 1,
-      color: Colors.error,
-      fontSize: 13,
-      lineHeight: 18,
-    },
-
-    // Form Group
-    formGroup: {
-      marginBottom: theme.spacing[6],
-      gap: theme.spacing[2],
-    },
-    field: {
-      gap: theme.spacing[1],
-    },
+    errorText: { flex: 1, color: Colors.error, fontSize: 13, lineHeight: 18 },
+    formGroup: { marginBottom: theme.spacing[6], gap: theme.spacing[2] },
+    field: { gap: theme.spacing[1] },
     label: {
       fontSize: 11,
       fontWeight: "600",
@@ -310,17 +242,8 @@ const createStyles = (theme: ReturnType<typeof useTheme>) =>
       letterSpacing: 0.8,
       marginBottom: theme.spacing[2],
     },
-
-    // Input wrapper - giống register
-    inputWrapper: {
-      position: "relative",
-      justifyContent: "center",
-    },
-    inputIconLeft: {
-      position: "absolute",
-      left: 14,
-      zIndex: 1,
-    },
+    inputWrapper: { position: "relative", justifyContent: "center" },
+    inputIconLeft: { position: "absolute", left: 14, zIndex: 1 },
     input: {
       height: 50,
       backgroundColor: theme.c.bg,
@@ -332,9 +255,7 @@ const createStyles = (theme: ReturnType<typeof useTheme>) =>
       color: theme.c.text,
       ...inputShadow,
     },
-    inputWithIcon: {
-      paddingLeft: 40,
-    },
+    inputWithIcon: { paddingLeft: 40 },
     eyeBtn: {
       position: "absolute",
       right: 0,
@@ -345,51 +266,16 @@ const createStyles = (theme: ReturnType<typeof useTheme>) =>
       justifyContent: "center",
       zIndex: 10,
     },
-
-    // Password requirements
-    requirements: {
-      marginTop: theme.spacing[2],
-      gap: theme.spacing[1],
-    },
-
-    // Actions
-    actionGroup: {
-      gap: theme.spacing[4],
-    },
-    switchRow: {
-      flexDirection: "row",
-      justifyContent: "center",
-      alignItems: "center",
-    },
-    switchText: {
-      fontSize: 14,
-      color: theme.c.textSub,
-    },
-    switchLink: {
-      fontSize: 14,
-      fontWeight: "700",
-      color: Colors.primary[500],
-    },
-
-    logoContainer: {
-      alignItems: "center",
-      marginBottom: theme.spacing[8],
-    },
-
-    logoImage: {
-      width: 300,
-      height: 100,
-    },
-
-    forgotRow: {
-      alignItems: "flex-end",
-      marginTop: theme.spacing[1],
-    },
-    forgotLink: {
-      fontSize: 13,
-      color: Colors.primary[500],
-      fontWeight: "500",
-    },
-
+    actionGroup: { gap: theme.spacing[4] },
+    switchRow: { flexDirection: "row", justifyContent: "center", alignItems: "center" },
+    switchText: { fontSize: 14, color: theme.c.textSub },
+    switchLink: { fontSize: 14, fontWeight: "700", color: Colors.primary[500] },
+    forgotRow: { alignItems: "flex-end", marginTop: theme.spacing[1] },
+    forgotLink: { fontSize: 13, color: Colors.primary[500], fontWeight: "500" },
+    // Unused legacy styles kept for safety
+    logoGroup: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: theme.spacing[3], marginBottom: theme.spacing[4] },
+    logoBadge: { width: 46, height: 46, borderRadius: theme.radius.xl, backgroundColor: Colors.primary[500], alignItems: "center", justifyContent: "center" },
+    logoLetter: { color: Colors.neutral[0], fontSize: 22, fontWeight: "700" },
+    logoText: { fontSize: 26, fontWeight: "800", color: Colors.primary[600], letterSpacing: -0.5 },
+    requirements: { marginTop: theme.spacing[2], gap: theme.spacing[1] },
   });
-  

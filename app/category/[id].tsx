@@ -289,7 +289,7 @@ export default function CategoryScreen() {
     return (
       <View style={[styles.container, { backgroundColor: c.bg }]}>
         <StatusBar barStyle="dark-content" backgroundColor={c.bg} />
-        <AppHeader title={category?.name ?? 'Danh mục'} showBack showCart showNotification />
+        <AppHeader title={category?.name ?? 'Danh mục'} showBack showCart />
         <View style={[styles.fullCenter, { backgroundColor: c.bgSoft }]}>
           <View style={[styles.errorCard, { backgroundColor: c.bg, borderColor: c.border }]}>
             <AppText style={styles.errorEmoji}>⚠️</AppText>

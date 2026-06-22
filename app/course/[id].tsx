@@ -1,6 +1,7 @@
 import { AppHeader } from "@/src/components/common";
+import { useCartSync } from "@/src/hooks/useCartSync";
+import { useFlyToCart } from "@/src/hooks/useFlyToCart";
 import { getProduct } from "@/src/services/liferay";
-import { addToCart } from "@/src/store/slices/cartSlice";
 import { Colors } from "@/src/theme";
 import type { CatalogProduct } from "@/src/types/liferay";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -9,6 +10,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Dimensions,
   FlatList,
@@ -22,7 +24,6 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { useDispatch } from "react-redux";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 const stripHtml = (html?: string) =>
@@ -38,9 +39,10 @@ const stripHtml = (html?: string) =>
 const formatPrice = (v: number) =>
   v === 0 ? "Miễn phí" : v.toLocaleString("vi-VN") + " đ";
 
+const MEKO_RED = Colors.primary[500];
+
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-/** Ảnh carousel ở đầu trang */
 const ImageCarousel = ({ images }: { images: string[] }) => {
   const { width } = useWindowDimensions();
   const [index, setIndex] = useState(0);
@@ -88,7 +90,6 @@ const ImageCarousel = ({ images }: { images: string[] }) => {
   );
 };
 
-/** Hàng thông tin nhỏ (icon + nhãn + giá trị) */
 const MetaRow = ({
   icon,
   label,
@@ -112,7 +113,6 @@ const MetaRow = ({
   </View>
 );
 
-/** Card thông số kỹ thuật — hiển thị tất cả specs từ API */
 const SpecCard = ({ specs }: { specs: any[] }) => {
   if (specs.length === 0) return null;
   return (
@@ -136,11 +136,9 @@ const SpecCard = ({ specs }: { specs: any[] }) => {
   );
 };
 
-/** Card mô tả đầy đủ */
 const DescCard = ({ short, full }: { short?: string; full?: string }) => {
   const [expanded, setExpanded] = useState(false);
   const fullText = stripHtml(full);
-  const shortText = short ? stripHtml(short) : fullText.slice(0, 200);
   const hasMore = fullText.length > 200;
 
   if (!short && !full) return null;
@@ -170,23 +168,59 @@ const DescCard = ({ short, full }: { short?: string; full?: string }) => {
   );
 };
 
-/** Tag badge */
 const Tag = ({ label }: { label: string }) => (
   <View style={cs.tag}>
     <Text style={cs.tagText}>{label}</Text>
   </View>
 );
 
+// ─── Toast nhẹ (giống CourseCard) ───────────────────────────────────────────
+const InlineToast = ({
+  msg,
+}: {
+  msg: { text: string; type: "success" | "error" } | null;
+}) => {
+  if (!msg) return null;
+  return (
+    <View
+      style={[
+        cs.toast,
+        {
+          backgroundColor:
+            msg.type === "success"
+              ? "rgba(16,185,129,0.95)"
+              : "rgba(239,68,68,0.95)",
+        },
+      ]}
+    >
+      <Ionicons
+        name={msg.type === "success" ? "checkmark-circle" : "close-circle"}
+        size={14}
+        color="#fff"
+      />
+      <Text style={cs.toastText}>{msg.text}</Text>
+    </View>
+  );
+};
+
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 export default function CourseDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const dispatch = useDispatch();
   const scrollY = useRef(new Animated.Value(0)).current;
+
+  // ✅ Dùng useCartSync thay vì dispatch addToCart local
+  const { addToCartAsync } = useCartSync();
+  const { flyFrom } = useFlyToCart();
 
   const [course, setCourse] = useState<CatalogProduct | null>(null);
   const [loading, setLoading] = useState(true);
-  const [added, setAdded] = useState(false);
+  const [isAddingCart, setIsAddingCart] = useState(false);
+  const [toastMsg, setToastMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  // Ref nút giỏ hàng để đo vị trí fly animation
+  const cartBtnRef = useRef<View>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -201,6 +235,69 @@ export default function CourseDetailScreen() {
       }
     })();
   }, [id]);
+
+  const showToast = (text: string, type: "success" | "error" = "success") => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToastMsg({ text, type });
+    toastTimer.current = setTimeout(() => setToastMsg(null), 2200);
+  };
+
+  // ✅ handleAddToCart giống CourseCard: dùng useCartSync + fly animation
+  const handleAddToCart = async () => {
+    if (!course || isAddingCart) return;
+
+    const sku = course.skus?.[0] as any;
+    const productId = sku?.productId ?? (course as any)?.productId ?? course.id;
+    const skuId = sku?.skuId ?? sku?.id ?? 0;
+    const price: number = sku?.price?.price ?? 0;
+    const promoPrice: number | undefined = sku?.price?.promoPrice ?? undefined;
+    const imageUrl = course.images?.[0]
+      ? typeof course.images[0] === "string"
+        ? course.images[0]
+        : (course.images[0] as any).src ?? ""
+      : course.thumbnail ?? "";
+
+    if (!skuId) {
+      showToast("Không tìm thấy SKU sản phẩm", "error");
+      return;
+    }
+
+    setIsAddingCart(true);
+    try {
+      const cartItemId = await addToCartAsync({
+        productId,
+        skuId,
+        quantity: 1,
+        name: course.name,
+        price,
+        promoPrice,
+        thumbnail: imageUrl,
+        catalogName: course.catalogName,
+      });
+
+      if (cartItemId) {
+        // ✅ Trigger fly animation từ vị trí nút giỏ hàng
+        cartBtnRef.current?.measureInWindow((x, y, width, height) => {
+          const origin = { x: x + width / 2, y: y + height / 2 };
+          flyFrom(origin, MEKO_RED, imageUrl);
+        });
+        showToast("Đã thêm vào giỏ hàng", "success");
+      } else {
+        showToast("Không thể thêm vào giỏ", "error");
+      }
+    } catch (error: any) {
+      showToast(error?.message ?? "Đã xảy ra lỗi", "error");
+    } finally {
+      setIsAddingCart(false);
+    }
+  };
+
+  // ✅ Mua ngay: thêm vào giỏ rồi navigate
+  const handleBuyNow = async () => {
+    if (!course || isAddingCart) return;
+    await handleAddToCart();
+    router.push("/cart");
+  };
 
   if (loading) {
     return (
@@ -249,9 +346,6 @@ export default function CourseDetailScreen() {
 
   // ── Specs ──────────────────────────────────────────────────────────────────
   const specs: any[] = course.productSpecifications ?? [];
-  console.log(specs);
-  
-  // Tách specs theo nhóm (các spec có optionCategory hoặc không)
   const lessonSpecs = specs.filter((s) => {
     const k = (s.specificationKey || "").toLowerCase();
     const t = (s.specificationTitle || "").toLowerCase();
@@ -262,31 +356,7 @@ export default function CourseDetailScreen() {
   });
   const otherSpecs = specs.filter((s) => !lessonSpecs.includes(s));
 
-  // ── Categories / tags ─────────────────────────────────────────────────────
   const categories: string[] = course.categories?.map((c: any) => c.name) ?? [];
-
-  // ── Add to cart ────────────────────────────────────────────────────────────
-  const handleAddToCart = () => {
-    try {
-      dispatch(
-        addToCart({
-          id: course.id,
-          name: course.name,
-          thumbnail: course.thumbnail || images[0],
-          price,
-          promoPrice,
-          catalogName: course.catalogName,
-          quantity: 1,
-          cartItemId: 0,
-          skuId: sku?.id ?? 0,
-        })
-      );
-      setAdded(true);
-      setTimeout(() => setAdded(false), 2000);
-    } catch (e) {
-      console.warn("Add to cart failed", e);
-    }
-  };
 
   return (
     <View style={cs.screen}>
@@ -306,7 +376,6 @@ export default function CourseDetailScreen() {
 
         {/* ── Tiêu đề & giá ── */}
         <View style={cs.heroBlock}>
-          {/* Tags danh mục */}
           {categories.length > 0 && (
             <View style={cs.tagRow}>
               {categories.map((c, i) => (
@@ -317,7 +386,6 @@ export default function CourseDetailScreen() {
 
           <Text style={cs.productTitle}>{course.name}</Text>
 
-          {/* Rating placeholder — replace khi có data */}
           <View style={cs.ratingRow}>
             {[1, 2, 3, 4, 5].map((n) => (
               <Ionicons
@@ -330,7 +398,6 @@ export default function CourseDetailScreen() {
             <Text style={cs.ratingText}>4.5 · 1.2k học viên</Text>
           </View>
 
-          {/* Giá */}
           <View style={cs.priceBlock}>
             <Text style={cs.finalPrice}>{formatPrice(finalPrice)}</Text>
             {promoPrice !== undefined && price > 0 && (
@@ -377,13 +444,9 @@ export default function CourseDetailScreen() {
             ) : null}
           </View>
 
-          {/* ── Mô tả ── */}
           <DescCard short={course.shortDescription} full={course.description} />
-
-          {/* ── Thông số (specs không phải lesson) ── */}
           <SpecCard specs={otherSpecs} />
 
-          {/* ── Nội dung bài giảng (specs là lesson) ── */}
           {lessonSpecs.length > 0 && (
             <View style={cs.card}>
               <Text style={cs.cardTitle}>Nội dung bài giảng</Text>
@@ -403,7 +466,6 @@ export default function CourseDetailScreen() {
             </View>
           )}
 
-          {/* ── Đánh giá (placeholder) ── */}
           <View style={cs.card}>
             <Text style={cs.cardTitle}>Đánh giá</Text>
             <View style={cs.emptyState}>
@@ -429,31 +491,42 @@ export default function CourseDetailScreen() {
           </View>
 
           <View style={cs.btnRow}>
-            <TouchableOpacity
-              style={cs.cartBtn}
-              onPress={handleAddToCart}
-              activeOpacity={0.85}
-            >
-              <MaterialCommunityIcons
-                name={added ? "check" : "cart-plus"}
-                size={20}
-                color={Colors.primary[600]}
-              />
-            </TouchableOpacity>
+            {/* ✅ Nút thêm giỏ hàng với ref để đo vị trí fly animation */}
+            <View ref={cartBtnRef} collapsable={false}>
+              <TouchableOpacity
+                style={[cs.cartBtn, isAddingCart && { opacity: 0.6 }]}
+                onPress={handleAddToCart}
+                disabled={isAddingCart}
+                activeOpacity={0.85}
+              >
+                {isAddingCart ? (
+                  <ActivityIndicator size="small" color={Colors.primary[600]} />
+                ) : (
+                  <MaterialCommunityIcons
+                    name="cart-plus"
+                    size={20}
+                    color={Colors.primary[600]}
+                  />
+                )}
+              </TouchableOpacity>
+            </View>
 
             <TouchableOpacity
-              style={cs.buyBtn}
+              style={[cs.buyBtn, isAddingCart && { opacity: 0.6 }]}
               activeOpacity={0.85}
-              onPress={() => {
-                handleAddToCart();
-                router.push("/cart");
-              }}
+              onPress={handleBuyNow}
+              disabled={isAddingCart}
             >
-              <Text style={cs.buyBtnText}>Mua ngay</Text>
+              <Text style={cs.buyBtnText}>
+                {isAddingCart ? "Đang thêm..." : "Mua ngay"}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
       </View>
+
+      {/* ✅ Toast nổi góc dưới màn hình */}
+      <InlineToast msg={toastMsg} />
     </View>
   );
 }
@@ -463,12 +536,10 @@ const cs = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.background.secondary },
   center: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
 
-  // Empty / error
   emptyText: { fontSize: 15, color: Colors.neutral[500], marginTop: 8 },
   backLink: { marginTop: 4 },
   backLinkText: { fontSize: 14, color: Colors.primary[500] },
 
-  // Carousel dots
   dotRow: {
     flexDirection: "row",
     justifyContent: "center",
@@ -482,7 +553,6 @@ const cs = StyleSheet.create({
   dotActive: { width: 14, backgroundColor: "#fff" },
   dotInactive: { width: 5, backgroundColor: "rgba(255,255,255,0.45)" },
 
-  // Hero block
   heroBlock: {
     backgroundColor: Colors.background.primary,
     padding: 14,
@@ -505,11 +575,9 @@ const cs = StyleSheet.create({
     marginBottom: 8,
   },
 
-  // Rating
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 3, marginBottom: 12 },
   ratingText: { fontSize: 12, color: Colors.neutral[500], marginLeft: 4 },
 
-  // Price
   priceBlock: { gap: 3 },
   finalPrice: { fontSize: 26, fontWeight: "800", color: Colors.neutral[900] },
   oldPriceRow: { flexDirection: "row", alignItems: "center", gap: 8 },
@@ -527,7 +595,6 @@ const cs = StyleSheet.create({
   discText: { fontSize: 11, color: "#fff", fontWeight: "700" },
   saveText: { fontSize: 12, color: Colors.primary[600], fontWeight: "600" },
 
-  // Card
   card: {
     backgroundColor: Colors.background.primary,
     borderRadius: 14,
@@ -541,7 +608,6 @@ const cs = StyleSheet.create({
     marginBottom: 12,
   },
 
-  // Meta row
   metaRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -563,7 +629,6 @@ const cs = StyleSheet.create({
     fontWeight: "500",
   },
 
-  // Description
   shortDesc: {
     fontSize: 14,
     fontWeight: "600",
@@ -579,18 +644,13 @@ const cs = StyleSheet.create({
   expandBtn: { marginTop: 8 },
   expandText: { fontSize: 13, color: Colors.primary[500], fontWeight: "600" },
 
-  // Specs
   specRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     paddingVertical: 8,
     gap: 12,
   },
-  specKey: {
-    fontSize: 13,
-    color: Colors.neutral[500],
-    flex: 1,
-  },
+  specKey: { fontSize: 13, color: Colors.neutral[500], flex: 1 },
   specVal: {
     fontSize: 13,
     color: Colors.neutral[800],
@@ -599,7 +659,6 @@ const cs = StyleSheet.create({
     textAlign: "right",
   },
 
-  // Lessons
   lessonRow: {
     flexDirection: "row",
     gap: 10,
@@ -618,11 +677,9 @@ const cs = StyleSheet.create({
   lessonTitle: { fontSize: 13, color: Colors.neutral[800], fontWeight: "600", lineHeight: 19 },
   lessonMeta: { fontSize: 12, color: Colors.neutral[500], marginTop: 2 },
 
-  // Empty state inside card
   emptyState: { alignItems: "center", paddingVertical: 20, gap: 8 },
   emptyStateText: { fontSize: 13, color: Colors.neutral[400] },
 
-  // Bottom bar
   bottomBar: {
     position: "absolute",
     bottom: 0,
@@ -631,7 +688,7 @@ const cs = StyleSheet.create({
     backgroundColor: Colors.background.primary,
     borderTopWidth: 0.5,
     borderTopColor: Colors.neutral[200],
-    paddingBottom: 24, // safe area
+    paddingBottom: 24,
   },
   bottomInner: {
     flexDirection: "row",
@@ -667,4 +724,21 @@ const cs = StyleSheet.create({
     justifyContent: "center",
   },
   buyBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+
+  // ✅ Toast nổi bên dưới màn hình (trên bottom bar)
+  toast: {
+    position: "absolute",
+    bottom: 90,
+    left: 20,
+    right: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 24,
+    zIndex: 20,
+  },
+  toastText: { color: "#fff", fontSize: 13, fontWeight: "600" },
 });
