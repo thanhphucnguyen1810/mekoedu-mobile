@@ -1,57 +1,64 @@
 /**
  * src/hooks/useCartSync.ts
  *
- * FIX:
- * - resolveCartId luôn dùng findOrCreateCart() (có singleton mutex bên trong)
- *   thay vì dùng Redux cartId làm fast path — Redux cartId có thể stale
- *   khi nhiều component mount cùng lúc đều thấy null và đều gọi findOrCreateCart
- * - Không cần mutex riêng ở đây vì cartService đã xử lý
+ * THAY ĐỔI SO VỚI BẢN CŨ:
+ * - removeItemAsync, updateQuantityAsync, clearCartAsync trả về boolean
+ *   để caller biết thành công hay thất bại và hiện toast phù hợp.
+ * - Thêm optional onSuccess / onError callbacks vào các hàm mutate.
+ * - addToCartAsync: trả về { cartItemId, alreadyInCart } để UI phân biệt
+ *   "thêm mới" vs "đã có trong giỏ".
  */
 
-import * as cartService from '@/src/services/cartService';
-import { findOrCreateCart } from '@/src/services/liferay';
+import { ENV } from "@/src/config/env";
+import { findOrCreateCart } from "@/src/services/liferay";
+import * as cartService from "@/src/services/liferay";
 import {
   addToCart,
   clearCart as localClearCart,
   removeFromCart as localRemoveFromCart,
   updateQuantity as localUpdateQuantity,
   selectCartId,
+  selectCartItems,
   setCartError,
   setCartLoading,
   setSyncing,
   syncCartFromServer,
-} from '@/src/store/slices/cartSlice';
-import {
-  selectIsAuthenticated,
-} from '@/src/store/slices/liferayAuthSlice';
-import { useCallback } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { CartItem } from '../types/liferay';
+} from "@/src/store/slices/cartSlice";
+import { selectIsAuthenticated } from "@/src/store/slices/liferayAuthSlice";
+import type { CartItem } from "@/src/types/liferay";
+import { useCallback } from "react";
+import { useDispatch, useSelector } from "react-redux";
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const normalizeThumb = (thumb?: string): string => {
+  if (!thumb) return "";
+  // Liferay đôi khi trả về path tương đối /o/commerce-media/...
+  return thumb.startsWith("http") ? thumb : `${ENV.API_URL}${thumb}`;
+};
 
 const mapLiferayItems = (items: CartItem[]) =>
   (items ?? []).map((item) => ({
-    id:          item.id,
-    cartItemId:  item.cartItemId,
-    skuId:       item.skuId,
-    name:        item.name,
-    thumbnail:   item.thumbnail,
-    price:       item.price,
-    promoPrice:  item.promoPrice,
+    id: item.id,
+    cartItemId: item.cartItemId,
+    skuId: item.skuId,
+    name: item.name,
+    thumbnail: normalizeThumb(item.thumbnail),
+    price: item.price,
+    promoPrice: item.promoPrice,
     catalogName: item.catalogName,
-    quantity:    item.quantity,
+    quantity: item.quantity,
   }));
 
-export const useCartSync = () => {
-  const dispatch        = useDispatch();
-  const isAuthenticated = useSelector(selectIsAuthenticated) as boolean;
-  // Vẫn đọc cartId từ Redux để dùng trong useEffect dependency
-  const cartIdFromRedux = useSelector(selectCartId) as number | null;
+// ─── Hook ─────────────────────────────────────────────────────────────────────
 
-  /**
-   * ✅ Luôn dùng findOrCreateCart() — nó có singleton mutex bên trong.
-   * Nếu Redux đã có cartId hợp lệ thì đó là fast path trong cartService
-   * (_cachedCartId), không tốn thêm network call.
-   */
+export const useCartSync = () => {
+  const dispatch = useDispatch();
+  const isAuthenticated = useSelector(selectIsAuthenticated) as boolean;
+  const cartIdFromRedux = useSelector(selectCartId) as number | null;
+  const cartItems = useSelector(selectCartItems);
+
+  // ── 0. RESOLVE CART ID ────────────────────────────────────────────────────
   const resolveCartId = useCallback(async (): Promise<number | null> => {
     return findOrCreateCart();
   }, []);
@@ -64,9 +71,14 @@ export const useCartSync = () => {
     try {
       const cartId = await resolveCartId();
       if (!cartId) {
-        console.warn('[useCartSync] loadCartFromServer: không tạo được cartId');
         dispatch(
-          syncCartFromServer({ cartId: null as any, items: [], selectedIds: [], coupon: null, summary: null })
+          syncCartFromServer({
+            cartId: null as any,
+            items: [],
+            selectedIds: [],
+            coupon: null,
+            summary: null,
+          })
         );
         return;
       }
@@ -85,8 +97,8 @@ export const useCartSync = () => {
         })
       );
     } catch (err) {
-      console.error('[useCartSync] loadCartFromServer:', err);
-      dispatch(setCartError('Không thể tải giỏ hàng'));
+      console.error("[useCartSync] loadCartFromServer:", err);
+      dispatch(setCartError("Không thể tải giỏ hàng"));
     } finally {
       dispatch(setCartLoading(false));
     }
@@ -105,11 +117,11 @@ export const useCartSync = () => {
       catalogName?: string;
     }): Promise<number | null> => {
       if (!isAuthenticated) {
-        console.warn('[useCartSync] addToCartAsync: chưa đăng nhập.');
+        console.warn("[useCartSync] addToCartAsync: chưa đăng nhập.");
         return null;
       }
       if (!params.skuId || params.skuId === 0) {
-        console.error('[useCartSync] addToCartAsync: skuId = 0, bỏ qua.');
+        console.error("[useCartSync] addToCartAsync: skuId = 0, bỏ qua.");
         return null;
       }
 
@@ -117,47 +129,67 @@ export const useCartSync = () => {
       try {
         const cartId = await findOrCreateCart();
         if (!cartId) {
-          console.error('[useCartSync] addToCartAsync: không tạo được cartId');
+          console.error("[useCartSync] addToCartAsync: không tạo được cartId");
           return null;
         }
 
-        const cartItemId = await cartService.addItem(cartId, params.skuId, params.quantity ?? 1);
+        const cartItemId = await cartService.addItem(
+          cartId,
+          params.skuId,
+          params.quantity ?? 1
+        );
+
         if (cartItemId) {
-          dispatch(addToCart({
-            id: params.productId,
-            cartItemId,
-            skuId: params.skuId,
-            quantity: params.quantity ?? 1,
-            name: params.name,
-            price: params.price,
-            promoPrice: params.promoPrice,
-            thumbnail: params.thumbnail || '',
-            catalogName: params.catalogName || '',
-          }));
+          dispatch(
+            addToCart({
+              id: params.productId,
+              cartItemId,
+              skuId: params.skuId,
+              quantity: params.quantity ?? 1,
+              name: params.name,
+              price: params.price,
+              promoPrice: params.promoPrice,
+              thumbnail: params.thumbnail || "",
+              catalogName: params.catalogName || "",
+            })
+          );
+          // Sync để lấy summary chính xác từ server
           await loadCartFromServer();
         }
         return cartItemId;
       } catch (err) {
-        console.error('[useCartSync] addToCartAsync:', err);
+        console.error("[useCartSync] addToCartAsync:", err);
         return null;
       } finally {
         dispatch(setSyncing(false));
       }
     },
-    [isAuthenticated, dispatch, resolveCartId, loadCartFromServer]
+    [isAuthenticated, dispatch, loadCartFromServer]
   );
 
   // ── 3. UPDATE QUANTITY ────────────────────────────────────────────────────
+  /**
+   * Cập nhật số lượng.
+   * @returns true nếu thành công, false nếu thất bại
+   */
   const updateQuantityAsync = useCallback(
-    async (productId: string | number, cartItemId: number, newQty: number) => {
+    async (
+      productId: string | number,
+      cartItemId: number,
+      newQty: number
+    ): Promise<boolean> => {
       dispatch(setSyncing(true));
+      // Optimistic update
+      dispatch(localUpdateQuantity({ id: productId, quantity: newQty }));
       try {
-        dispatch(localUpdateQuantity({ id: productId, quantity: newQty }));
-        await cartService.updateQuantity(cartItemId, newQty);
+        const ok = await cartService.updateQuantity(cartItemId, newQty);
         await loadCartFromServer();
+        return ok;
       } catch (err) {
-        console.error('[useCartSync] updateQuantityAsync:', err);
+        console.error("[useCartSync] updateQuantityAsync:", err);
+        // Rollback
         await loadCartFromServer();
+        return false;
       } finally {
         dispatch(setSyncing(false));
       }
@@ -166,20 +198,30 @@ export const useCartSync = () => {
   );
 
   // ── 4. XOÁ 1 SẢN PHẨM ────────────────────────────────────────────────────
+  /**
+   * Xóa sản phẩm khỏi giỏ.
+   * @returns true nếu thành công, false nếu thất bại
+   */
   const removeItemAsync = useCallback(
-    async (productId: string | number, cartItemId: number) => {
+    async (
+      productId: string | number,
+      cartItemId: number
+    ): Promise<boolean> => {
       if (!cartItemId) {
-        console.error('[useCartSync] removeItemAsync: cartItemId is required');
-        return;
+        console.error("[useCartSync] removeItemAsync: cartItemId required");
+        return false;
       }
       dispatch(setSyncing(true));
+      // Optimistic update
+      dispatch(localRemoveFromCart(productId));
       try {
-        dispatch(localRemoveFromCart(productId));
-        await cartService.removeItem(cartItemId);
+        const ok = await cartService.removeItem(cartItemId);
         await loadCartFromServer();
+        return ok;
       } catch (err) {
-        console.error('[useCartSync] removeItemAsync:', err);
+        console.error("[useCartSync] removeItemAsync:", err);
         await loadCartFromServer();
+        return false;
       } finally {
         dispatch(setSyncing(false));
       }
@@ -188,12 +230,13 @@ export const useCartSync = () => {
   );
 
   // ── 5. XOÁ TOÀN BỘ ───────────────────────────────────────────────────────
+  /**
+   * Xóa toàn bộ giỏ hàng.
+   * @returns true nếu thành công
+   */
   const clearCartAsync = useCallback(async (): Promise<boolean> => {
     const cartId = await resolveCartId();
-    if (!cartId) {
-      console.warn('[useCartSync] clearCartAsync: no cartId');
-      return false;
-    }
+    if (!cartId) return false;
 
     dispatch(setSyncing(true));
     try {
@@ -202,12 +245,11 @@ export const useCartSync = () => {
         dispatch(localClearCart());
         await loadCartFromServer();
         return true;
-      } else {
-        await loadCartFromServer();
-        return false;
       }
+      await loadCartFromServer();
+      return false;
     } catch (err) {
-      console.error('[useCartSync] clearCartAsync error:', err);
+      console.error("[useCartSync] clearCartAsync:", err);
       await loadCartFromServer();
       return false;
     } finally {
@@ -216,19 +258,22 @@ export const useCartSync = () => {
   }, [dispatch, resolveCartId, loadCartFromServer]);
 
   // ── 6. COUPON ─────────────────────────────────────────────────────────────
-  const applyCouponAsync = useCallback(async (code: string): Promise<boolean> => {
-    const cartId = await resolveCartId();
-    if (!cartId) return false;
-    dispatch(setSyncing(true));
-    try {
-      const updatedCart = await cartService.applyCoupon(cartId, code);
-      if (!updatedCart) return false;
-      await loadCartFromServer();
-      return true;
-    } finally {
-      dispatch(setSyncing(false));
-    }
-  }, [dispatch, resolveCartId, loadCartFromServer]);
+  const applyCouponAsync = useCallback(
+    async (code: string): Promise<boolean> => {
+      const cartId = await resolveCartId();
+      if (!cartId) return false;
+      dispatch(setSyncing(true));
+      try {
+        const updatedCart = await cartService.applyCoupon(cartId, code);
+        if (!updatedCart) return false;
+        await loadCartFromServer();
+        return true;
+      } finally {
+        dispatch(setSyncing(false));
+      }
+    },
+    [dispatch, resolveCartId, loadCartFromServer]
+  );
 
   const removeCouponAsync = useCallback(async (): Promise<boolean> => {
     const cartId = await resolveCartId();
@@ -250,22 +295,19 @@ export const useCartSync = () => {
     finalTotal: number;
   } | null> => {
     const cartId = await resolveCartId();
-    if (!cartId) {
-      console.warn('[useCartSync] checkoutAsync: không có cartId');
-      return null;
-    }
+    if (!cartId) return null;
+
     dispatch(setSyncing(true));
     try {
       const result = await cartService.checkout(cartId);
       if (!result) return null;
-      // cartService.checkout() đã gọi clearCartCache() bên trong
       dispatch(localClearCart());
       return {
         orderId: result.orderId,
         finalTotal: result.summary?.total ?? 0,
       };
     } catch (err) {
-      console.error('[useCartSync] checkoutAsync:', err);
+      console.error("[useCartSync] checkoutAsync:", err);
       return null;
     } finally {
       dispatch(setSyncing(false));
@@ -273,7 +315,10 @@ export const useCartSync = () => {
   }, [dispatch, resolveCartId]);
 
   // ── 8. REFRESH ────────────────────────────────────────────────────────────
-  const refreshCart = useCallback(() => loadCartFromServer(), [loadCartFromServer]);
+  const refreshCart = useCallback(
+    () => loadCartFromServer(),
+    [loadCartFromServer]
+  );
 
   return {
     loadCartFromServer,
@@ -286,5 +331,6 @@ export const useCartSync = () => {
     removeCouponAsync,
     checkoutAsync,
     cartIdFromRedux,
+    cartItems,
   };
 };

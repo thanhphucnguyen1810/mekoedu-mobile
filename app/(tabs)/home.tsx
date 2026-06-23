@@ -3,11 +3,17 @@ import { DYNAMIC_HOME_CONFIG, HomeComponentsMap } from "@/src/components/Home/Ho
 import { Spacing, useTheme } from "@/src/theme";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function HomeScreen() {
   const { c } = useTheme();
+  const insets = useSafeAreaInsets();
   const [sections, setSections] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Chiều cao tab bar = 60 (icon + label) + insets.bottom (safe area)
+  // Con số 60 phải khớp với TAB_ICON_AREA trong file _layout.tsx
+  const TAB_BAR_HEIGHT = 60 + insets.bottom;
 
   useEffect(() => {
     const activeSections = DYNAMIC_HOME_CONFIG.sections
@@ -30,7 +36,10 @@ export default function HomeScreen() {
       <AppHeader isSearchable showCart />
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: TAB_BAR_HEIGHT + Spacing.layout.screenVertical }
+        ]}
       >
         {sections.map((section) => {
           const ComponentToRender = HomeComponentsMap[section.type];
@@ -41,6 +50,7 @@ export default function HomeScreen() {
     </SafeAreaView>
   );
 }
+
 
 const styles = StyleSheet.create({
   scrollContent: {

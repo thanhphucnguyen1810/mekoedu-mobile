@@ -314,7 +314,6 @@ export default function CategoryScreen() {
         title={category?.name ?? 'Danh mục'}
         showBack
         showCart
-        showNotification
       />
 
       {loading && products.length === 0 ? (

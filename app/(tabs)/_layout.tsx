@@ -1,8 +1,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 
-import { useTheme } from "../../src/theme";
 import { AppConfig } from "@/src/config/appConfig";
+import { useTheme } from "../../src/theme";
 
 export default function TabLayout() {
   const { c, typography } = useTheme();
@@ -39,7 +39,7 @@ export default function TabLayout() {
         }}
       />
 
-      {/* Tab 2: Khóa học */}
+      {/* Tab 2: Cửa hàng */}
       <Tabs.Screen
         name="courses"
         options={{
@@ -54,16 +54,16 @@ export default function TabLayout() {
         }}
       />
 
-      {/* Tab 3: Thi */}
+      {/* Tab 3: Đơn hàng */}
       <Tabs.Screen
-        name="exams"
+        name="orders"
         options={{
-          title: tabs.exams.label,
+          title: "Đơn hàng",
           tabBarIcon: ({ color }) => (
             <MaterialCommunityIcons
-              name={tabs.exams.icon as any}
-              size={24}
-              color={color}
+              name="clipboard-list-outline" // 👈 icon outline, đồng bộ với các tab khác
+              size={24}                     // 👈 size 24 như các tab khác
+              color={color}                 // 👈 màu lấy từ theme (active/inactive tự động)
             />
           ),
         }}
