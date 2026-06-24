@@ -8,7 +8,6 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Image, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native"; // ⚠️ Thêm Image
 import {
-  Avatar,
   Divider,
   IconButton,
   List,
@@ -16,15 +15,17 @@ import {
   Text,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
+import { selectCartCount } from "@/src/store/slices/cartSlice";
 
 const BASE_URL = ENV.API_URL;
 
 export default function ProfileScreen() {
   const { c, typography, spacing } = useTheme();
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
-  const [avatarError, setAvatarError] = useState(false); // ⚠️ Thêm state
+  const [avatarError, setAvatarError] = useState(false);
   const dispatch = useDispatch();
+  const cartCount = useSelector(selectCartCount);
 
   const handleLogout = async () => {
     try {
@@ -40,6 +41,7 @@ export default function ProfileScreen() {
     const loadUserInfo = async () => {
       try {
         const response = await getMyUserInfo();
+        
         setUserInfo(response);
         setAvatarError(false);
       } catch (error) {
@@ -79,13 +81,12 @@ export default function ProfileScreen() {
           >
             <View style={[styles.headerProfile, { gap: spacing.component.iconGap }]}>
               <View style={styles.avatarWrapper}>
-                {/* ⚠️ THAY THẾ Avatar.Image bằng Image */}
                 <View style={styles.avatarContainer}>
                   {avatarUrl && !avatarError ? (
                     <Image
                       source={{ uri: avatarUrl }}
                       style={styles.avatarImage}
-                      resizeMode="cover" // ⚠️ Quan trọng: giúp ảnh fit trong khung
+                      resizeMode="cover"
                       onError={() => setAvatarError(true)}
                     />
                   ) : (
@@ -136,18 +137,22 @@ export default function ProfileScreen() {
 
           {/* Stats Cards - Giữ nguyên */}
           <View style={[styles.statsContainer, { paddingHorizontal: spacing.layout.screenHorizontal }]}>
+
             <View style={[styles.statCard, { backgroundColor: c.bgSoft, borderColor: c.border }]}>
               <Text style={[styles.statNumber, { color: c.text }]}>0</Text>
               <Text style={[styles.statLabel, { color: c.textSub }]}>Đơn hàng</Text>
             </View>
+
             <View style={[styles.statCard, { backgroundColor: c.bgSoft, borderColor: c.border }]}>
               <Text style={[styles.statNumber, { color: c.text }]}>0</Text>
               <Text style={[styles.statLabel, { color: c.textSub }]}>Yêu thích</Text>
             </View>
+
             <View style={[styles.statCard, { backgroundColor: c.bgSoft, borderColor: c.border }]}>
-              <Text style={[styles.statNumber, { color: c.text }]}>0</Text>
+              <Text style={[styles.statNumber, { color: c.text }]}>{cartCount}</Text>
               <Text style={[styles.statLabel, { color: c.textSub }]}>Sản phẩm</Text>
             </View>
+
           </View>
 
           {/* Menu Items - Giữ nguyên */}
@@ -171,6 +176,7 @@ export default function ProfileScreen() {
               theme={c} 
               typography={typography} 
               spacing={spacing} 
+              onPress={() => router.push('/profile/edit')}
             />
             <Divider style={dividerStyle} />
             <ProfileItem 
@@ -257,9 +263,10 @@ export default function ProfileScreen() {
   );
 }
 
-function ProfileItem({ icon, title, desc, color, theme, typography, spacing }: any) {
+function ProfileItem({ icon, title, desc, color, theme, typography, spacing, onPress }: any) {
   return (
     <List.Item
+      onPress={onPress} 
       title={title}
       description={desc}
       titleStyle={[styles.itemTitle, { color: theme.text }]}

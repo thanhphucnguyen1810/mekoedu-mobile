@@ -1,0 +1,60 @@
+# .maestro/welcome_screen.yml
+# Test cho màn hình Welcome của MekoStore
+
+appId: com.mekostore.app # Có thể để tạm, không ảnh hưởng khi dùng openLink
+---
+# Bước 1: Mở ứng dụng thông qua Expo Go
+- openLink: exp://192.168.2.152:8081
+
+# Bước 2: Đợi màn hình load và kiểm tra các thành phần chính
+# Maestro tự động đợi các thành phần xuất hiện, nhưng có thể thêm timeout nếu cần
+- waitForAnimationToEnd:
+    timeout: 10000 # Đợi tối đa 10 giây cho app load
+
+# Bước 3: Kiểm tra logo xuất hiện
+# Lưu ý: Logo là Image component, không có text nên không thể dùng assertVisible với text
+# Nếu bạn đã thêm testID cho logo, dùng:
+- assertVisible:
+    id: "app_logo"
+# Hoặc nếu chưa có testID, bạn có thể bỏ qua bước này
+
+# Bước 4: Kiểm tra tiêu đề auth (dùng text từ appConfig)
+- assertVisible: "ĐĂNG KÝ / ĐĂNG NHẬP"
+
+# Bước 5: Kiểm tra các nút chính
+- assertVisible: "Đăng nhập"
+- assertVisible: "Đăng ký"
+
+# Bước 6: Kiểm tra text hỗ trợ bảo mật
+- assertVisible: "Bảo mật tuyệt đối · Hỗ trợ 24/7"
+
+# Bước 7: Kiểm tra biểu tượng bảo mật (nếu có thể)
+# Với Ionicons, không có text nên khó kiểm tra, có thể bỏ qua
+
+# Bước 8: Test chức năng - Nhấn nút Đăng nhập
+- tapOn: "Đăng nhập"
+
+# Bước 9: Kiểm tra đã chuyển đến màn hình Login
+- assertVisible: "Đăng nhập" # Title của màn hình Login
+- assertVisible: "Email" # Label email
+- assertVisible: "Mật khẩu" # Label password
+
+# Bước 10: Quay lại màn hình Welcome (cho Android)
+- pressKey: BACK
+
+# Bước 11: Test chức năng - Nhấn nút Đăng ký
+- tapOn: "Đăng ký"
+
+# Bước 12: Kiểm tra đã chuyển đến màn hình Register
+- assertVisible: "Tạo tài khoản mới" # Title của màn hình Register
+- assertVisible: "Họ" # Label họ
+- assertVisible: "Tên" # Label tên
+- assertVisible: "Email" # Label email
+- assertVisible: "Mật khẩu" # Label password
+- assertVisible: "Xác nhận mật khẩu" # Label confirm password
+
+# Bước 13: Quay lại màn hình Welcome
+- pressKey: BACK
+
+# Bước 14: Kiểm tra lại màn hình Welcome để đảm bảo quay lại đúng
+- assertVisible: "ĐĂNG KÝ / ĐĂNG NHẬP"

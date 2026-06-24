@@ -124,7 +124,7 @@ export const CategoryGrid = ({
       if (onCategoryPress) {
         onCategoryPress(categoryId);
       } else {
-        router.push(`/category/${categoryId}`);
+        router.push({ pathname: "/category", params: { selectedId: categoryId } });
       }
     }
   };

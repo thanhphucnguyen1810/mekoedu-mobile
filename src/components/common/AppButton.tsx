@@ -14,7 +14,8 @@ interface AppButtonProps {
   iconPosition?: "left" | "right";
   style?: ViewStyle;
   textStyle?: TextStyle;
-  fullWidth?: boolean; // Thêm prop mới
+  fullWidth?: boolean;
+  testID?: string; // 👈 THÊM DÒNG NÀY
 }
 
 export const AppButton = ({
@@ -27,7 +28,8 @@ export const AppButton = ({
   iconPosition = "left",
   style,
   textStyle,
-  fullWidth = false, // Mặc định false để có thể đặt 2 button cạnh nhau
+  fullWidth = false,
+  testID, // 👈 THÊM DÒNG NÀY
 }: AppButtonProps) => {
   const { c, radius } = useTheme();
 
@@ -84,6 +86,7 @@ export const AppButton = ({
       onPress={onPress}
       disabled={disabled || loading}
       activeOpacity={0.85}
+      testID={testID} // 👈 THÊM DÒNG NÀY (TRUYỀN XUỐNG)
     >
       {loading ? (
         <ActivityIndicator color={getTextColor()} size="small" />

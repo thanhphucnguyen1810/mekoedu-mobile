@@ -30,20 +30,6 @@ export const validatePassword = (password: string) => ({
   number: /[0-9]/.test(password),
 });
 
-type RequirementItemProps = { text: string; valid: boolean };
-
-const RequirementItem = ({ text, valid }: RequirementItemProps) => (
-  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-    <Ionicons
-      name={valid ? "checkmark-circle" : "close-circle"}
-      size={14}
-      color={valid ? Colors.success : Colors.error}
-    />
-    <Text style={{ fontSize: 12, color: valid ? Colors.success : Colors.error }}>
-      {text}
-    </Text>
-  </View>
-);
 
 export default function LoginScreen() {
   const dispatch = useDispatch<AppDispatch>();

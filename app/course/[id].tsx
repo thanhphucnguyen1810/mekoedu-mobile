@@ -10,19 +10,16 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Animated,
-  Dimensions,
   FlatList,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   useWindowDimensions,
-  View,
+  View
 } from "react-native";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -68,12 +65,20 @@ const ImageCarousel = ({ images }: { images: string[] }) => {
         scrollEventThrottle={16}
         keyExtractor={(_, i) => String(i)}
         renderItem={({ item }) => (
-          <Image
-            source={{ uri: item }}
-            style={{ width, height: IMG_H }}
-            contentFit="cover"
-            transition={150}
-          />
+          <View style={{ width, height: IMG_H, overflow: 'hidden' }}>
+            <Image
+              source={{ uri: item }}
+              style={{ 
+                width: width, 
+                height: IMG_H,
+              }}
+              contentFit="cover"
+              contentPosition="center"
+              transition={150}
+              placeholder={Colors.neutral[100]}
+              placeholderContentFit="cover"
+            />
+          </View>
         )}
       />
       {images.length > 1 && (
@@ -242,7 +247,6 @@ export default function CourseDetailScreen() {
     toastTimer.current = setTimeout(() => setToastMsg(null), 2200);
   };
 
-  // ✅ handleAddToCart giống CourseCard: dùng useCartSync + fly animation
   const handleAddToCart = async () => {
     if (!course || isAddingCart) return;
 
@@ -360,7 +364,7 @@ export default function CourseDetailScreen() {
 
   return (
     <View style={cs.screen}>
-      <AppHeader title="Chi tiết khóa học" showBack showCart />
+      <AppHeader title="Chi tiết sản phẩm" showBack showCart />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -386,7 +390,7 @@ export default function CourseDetailScreen() {
 
           <Text style={cs.productTitle}>{course.name}</Text>
 
-          <View style={cs.ratingRow}>
+          {/* <View style={cs.ratingRow}>
             {[1, 2, 3, 4, 5].map((n) => (
               <Ionicons
                 key={n}
@@ -396,7 +400,7 @@ export default function CourseDetailScreen() {
               />
             ))}
             <Text style={cs.ratingText}>4.5 · 1.2k học viên</Text>
-          </View>
+          </View> */}
 
           <View style={cs.priceBlock}>
             <Text style={cs.finalPrice}>{formatPrice(finalPrice)}</Text>
@@ -525,7 +529,7 @@ export default function CourseDetailScreen() {
         </View>
       </View>
 
-      {/* ✅ Toast nổi góc dưới màn hình */}
+      {/* Toast nổi góc dưới màn hình */}
       <InlineToast msg={toastMsg} />
     </View>
   );

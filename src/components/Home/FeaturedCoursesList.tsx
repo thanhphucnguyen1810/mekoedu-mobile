@@ -86,11 +86,7 @@ export const FeaturedCoursesList = ({
   const goToProductDetail = (item: CatalogProduct) => {
     router.push(`/course/${item.productId}`);
   };
-
-  // const goToCategory = (category: Category) => {
-  //   router.push({ pathname: "/courses", params: { id: String(category.id), name: category.name } });
-  // };
-
+  
   const goToCategory = (category: Category) => {
   router.push({
     pathname: "/category/[id]",
