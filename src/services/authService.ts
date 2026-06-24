@@ -2,7 +2,6 @@
  * src/services/liferay/authService.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * Xử lý toàn bộ luồng xác thực với Liferay OAuth2.
- *
  * FIX: logoutUser chỉ xóa ACCESS + REFRESH token.
  * ACCOUNT_ID và CART_ID được GIỮ LẠI để khi đăng nhập lại,
  * cartService.findOrCreateCart() tìm thấy cart cũ thay vì tạo mới.
@@ -14,6 +13,7 @@ import { ENV } from "../config/env";
 import { TOKEN_KEYS } from "../config/tokenKeys";
 import type { RegisterPayload, TokenResponse, UserInfo } from "../types/liferay";
 import { clearCartCache } from "./cartService";
+import { clearAccountCache, saveAccountId } from "./userService";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -111,7 +111,10 @@ export async function registerUser(payload: RegisterPayload): Promise<UserInfo &
         userData.alternateName || screenName,
         clientToken
       );
+      await saveAccountId(accountId);
+      console.log(`[authService] Register + accountId saved: ${accountId}`);
       return { ...userData, accountId };
+
     } catch (accountError) {
       console.error("[authService] Không thể tạo account cho user:", accountError);
       return userData;
@@ -175,8 +178,23 @@ export async function loginUser(
     password,
   });
 
+  clearAccountCache();
+  clearCartCache();
+  await AsyncStorage.multiRemove([TOKEN_KEYS.ACCOUNT_ID, TOKEN_KEYS.CART_ID]);
+
   await persistTokens(tokens);
-  return { access_token: tokens.access_token, refresh_token: tokens.refresh_token };
+  try {
+    const { ensureUserAccount } = await import("./userService");
+    await ensureUserAccount();
+    console.log("[authService] accountId restored after login");
+  } catch (e) {
+    console.warn("[authService] ensureUserAccount after login failed:", e);
+  }
+
+  return {
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token ?? "",
+  };
 }
 
 export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
@@ -190,18 +208,16 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
 
 /**
  * Đăng xuất: chỉ xóa ACCESS + REFRESH token.
- *
- * ✅ KHÔNG xóa ACCOUNT_ID và CART_ID — giữ lại để khi đăng nhập lại,
- * cartService.findOrCreateCart() tìm được cart "Open" cũ trên Liferay
- * thay vì tạo mới mỗi lần. Điều này đảm bảo giỏ hàng được duy trì
- * liên tục qua các phiên đăng nhập của cùng một user.
  */
 export async function logoutUser(): Promise<void> {
   await AsyncStorage.multiRemove([
     TOKEN_KEYS.ACCESS,
     TOKEN_KEYS.REFRESH,
+    TOKEN_KEYS.ACCOUNT_ID,
   ]);
   clearCartCache();
+  clearAccountCache();
+  console.log("[authService] Logged out – token cleared, cart/account cache preserved");
 }
 
 export async function getClientToken(): Promise<string> {

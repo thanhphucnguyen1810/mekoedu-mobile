@@ -345,7 +345,6 @@ export default function CatalogScreen() {
       <AppHeader
         title="Sản phẩm"
         showCart
-        // showNotification
         isSearchable
         placeholder="Tìm kiếm sản phẩm..."
         searchQuery={searchText}

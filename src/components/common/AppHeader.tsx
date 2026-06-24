@@ -7,8 +7,8 @@ import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import { Badge, Searchbar } from "react-native-paper";
-import { useSelector } from "react-redux";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSelector } from "react-redux";
 import { CartIconMeasurer } from "../CartIconMeasurer";
 import { AppText } from "./AppText";
 
@@ -129,8 +129,8 @@ export const AppHeader = ({
               <View style={styles.iconWrapper}>
                 <Ionicons name="cart-outline" size={24} color={c.text} />
                 {cartCount > 0 && (
-                  <Badge size={16} style={[styles.badge, { backgroundColor: c.primary }]}>
-                    {cartCount}
+                  <Badge size={16} style={[styles.badge, { backgroundColor: c.primary }]} textColor="#fff">
+                      {cartCount}
                   </Badge>
                 )}
               </View>
@@ -214,6 +214,7 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     borderWidth: 1.5,
     borderColor: "#FFFFFF",
+    color: "#fff"
   },
   rightAction: {
     paddingHorizontal: 8,

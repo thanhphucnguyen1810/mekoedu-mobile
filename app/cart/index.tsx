@@ -21,6 +21,7 @@ import {
   View,
 } from 'react-native';
 import { useSelector } from 'react-redux';
+import Toast from "react-native-toast-message"; 
 
 import { CartHeader } from '@/src/components/cart/CartHeader';
 import { CartItemCard } from '@/src/components/cart/CartItemCard';
@@ -59,7 +60,6 @@ export default function CartScreen() {
   const isLoading = syncing || localLoading;
   const [refreshing, setRefreshing] = useState(false);
 
-  // (cartId là null lúc đầu, phụ thuộc nó sẽ gây re-trigger khi sync xong)
   const hasMounted = useRef(false);
   useEffect(() => {
     if (hasMounted.current) return;
@@ -78,20 +78,50 @@ export default function CartScreen() {
     setRefreshing(false);
   }, [loadCartFromServer]);
 
-  const handleRemove = useCallback(async (item: CartItem) => {
-  setLocalLoading(true);
-  try {
-    await removeItemAsync(item.id, item.cartItemId);
-  } catch {
-    Alert.alert('Lỗi', 'Không thể xóa sản phẩm. Vui lòng thử lại.');
-  } finally {
-    setLocalLoading(false);
-  }
-}, [removeItemAsync, setLocalLoading]);
+  // ─── Toast helpers ────────────────────────────────────────────────────────
+ 
+  const showSuccess = useCallback((message: string) => {
+    Toast.show({
+      type: "success",
+      text1: message,
+      position: "bottom",
+      visibilityTime: 2000,
+    });
+  }, []);
+ 
+  const showError = useCallback((message: string) => {
+    Toast.show({
+      type: "error",
+      text1: message,
+      position: "bottom",
+      visibilityTime: 2500,
+    });
+  }, []);
 
-  const handleQtyChange = useCallback((item: CartItem, qty: number) => {
-    updateQuantityAsync(item.id, item.cartItemId, qty);
-  }, [updateQuantityAsync]);
+  // ─── Handlers ─────────────────────────────────────────────────────────────
+  
+  const handleRemove = useCallback(async (item: CartItem) => {
+    setLocalLoading(true);
+    try {
+      const ok = await removeItemAsync(item.id, item.cartItemId);
+      if (ok) {
+        showSuccess(`Đã xóa "${item.name}" khỏi giỏ hàng`);
+      } else {
+        showError("Không thể xóa sản phẩm, vui lòng thử lại");
+      }
+    } catch {
+      showError("Đã xảy ra lỗi, vui lòng thử lại");
+    } finally {
+      setLocalLoading(false);
+    }
+  }, [removeItemAsync, showSuccess, showError]);
+
+  const handleQtyChange = useCallback( async (item: CartItem, qty: number) => {
+    const ok = await updateQuantityAsync(item.id, item.cartItemId, qty);
+    if (!ok) {
+      showError("Không thể cập nhật số lượng");
+    }
+  }, [updateQuantityAsync, showError]);
 
   const handleClearCart = useCallback(() => {
     if (cartItems.length === 0) {
@@ -110,9 +140,13 @@ export default function CartScreen() {
             setLocalLoading(true);
             try {
               const ok = await clearCartAsync();
-              if (!ok) Alert.alert('Lỗi', 'Không thể xóa hết giỏ hàng. Vui lòng thử lại.');
+              if (ok) {
+                showSuccess("Đã xóa toàn bộ giỏ hàng");
+              } else {
+                showError("Không thể xóa hết giỏ hàng, vui lòng thử lại");
+              }
             } catch {
-              Alert.alert('Lỗi', 'Không thể xóa giỏ hàng. Vui lòng thử lại.');
+              showError("Đã xảy ra lỗi, vui lòng thử lại");
             } finally {
               setLocalLoading(false);
             }
@@ -120,21 +154,21 @@ export default function CartScreen() {
         },
       ]
     );
-  }, [cartItems.length, clearCartAsync]);
+  }, [cartItems.length, clearCartAsync, showSuccess, showError]);
 
   const handleApplyCoupon = useCallback(async (code: string) => {
     setLocalLoading(true);
     try {
       const ok = await applyCouponAsync(code);
       if (ok) {
-        Alert.alert('✓ Áp dụng thành công', `Mã ${code.toUpperCase()} đã được áp dụng.`);
+        showSuccess(`Mã ${code.toUpperCase()} đã được áp dụng`);
       } else {
-        Alert.alert('Mã không hợp lệ', 'Vui lòng kiểm tra lại mã giảm giá.');
+        showError("Mã giảm giá không hợp lệ");
       }
     } finally {
       setLocalLoading(false);
     }
-  }, [applyCouponAsync]);
+  }, [applyCouponAsync, showSuccess, showError]);
 
   const handleRemoveCoupon = useCallback(async () => {
     setLocalLoading(true);
@@ -154,7 +188,7 @@ export default function CartScreen() {
     try {
       const result = await checkoutAsync();
       if (!result) {
-        Alert.alert('Lỗi', 'Không thể tạo đơn hàng. Vui lòng thử lại.');
+        showError("Không thể tạo đơn hàng, vui lòng thử lại");
         return;
       }
       router.push({
@@ -165,16 +199,16 @@ export default function CartScreen() {
         },
       });
     } catch {
-      Alert.alert('Lỗi', 'Không thể thanh toán. Vui lòng thử lại.');
+      showError("Không thể thanh toán, vui lòng thử lại");
     } finally {
       setLocalLoading(false);
     }
-  }, [cartItems.length, checkoutAsync]);
+  }, [cartItems.length, checkoutAsync, showError]);
 
   const shopGroups = useMemo(() => {
     const map = new Map<string, CartItem[]>();
     for (const item of cartItems) {
-      const key = item.catalogName ?? 'MekoEdu';
+      const key = item.catalogName ?? 'MekoStore';
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(item);
     }

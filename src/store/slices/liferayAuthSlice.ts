@@ -4,11 +4,11 @@
  * Redux slice quản lý Liferay auth state.
  *
  * THAY ĐỔI SO VỚI BẢN CŨ:
- * - Import từ services/liferay/* (đã refactor) thay vì liferayService monolith
- * - Bỏ import Constants – selectChannelId đọc từ ENV thay vì expoConfig
- * - Bỏ SecureStore – dùng AsyncStorage nhất quán với authService
- *   (authService đã lo việc persist token, slice chỉ giữ state in-memory)
- * - Giữ nguyên toàn bộ thunk logic (rehydrate, login, register, refresh, logout)
+ * - liferayLogin.fulfilled: dispatch loadCartFromServer() để badge giỏ hàng
+ *   trong AppHeader hiển thị đúng số lượng ngay sau khi đăng nhập.
+ * - rehydrateLiferayAuth.fulfilled: tương tự — khi app khởi động và phát hiện
+ *   user đã login, cũng load cart luôn.
+ * - Dùng AppDispatch type để tránh circular import với store.
  */
 
 import { ENV } from "@/src/config/env";
@@ -27,44 +27,50 @@ import type { RootState } from "../index";
 // ─── State ────────────────────────────────────────────────────────────────────
 
 interface LiferayAuthState {
-  accessToken:  string | null;
+  accessToken: string | null;
   refreshToken: string | null;
-  user:         UserInfo | null;
-  loading:      boolean;
-  error:        string | null;
+  user: UserInfo | null;
+  loading: boolean;
+  error: string | null;
 }
 
 const initialState: LiferayAuthState = {
-  accessToken:  null,
+  accessToken: null,
   refreshToken: null,
-  user:         null,
-  loading:      false,
-  error:        null,
+  user: null,
+  loading: false,
+  error: null,
 };
 
 // ─── Thunks ───────────────────────────────────────────────────────────────────
 
 /**
  * Khôi phục session khi app khởi động.
- * authService đã lưu token vào AsyncStorage – chỉ cần đọc lại và verify.
+ * Sau khi xác nhận token còn hợp lệ, dispatch loadCartFromServer để badge cập nhật.
  */
 export const rehydrateLiferayAuth = createAsyncThunk(
   "liferayAuth/rehydrate",
-  async () => {
+  async (_, { dispatch }) => {
     const accessToken = await getUserToken();
     if (!accessToken) return null;
 
     try {
-      // Thử verify bằng access token hiện tại
       const user = await getMyUserInfo();
-      return { accessToken, user };
+      const result = { accessToken, user };
+
+      // ✅ Load cart sau khi rehydrate để badge hiện đúng
+      _dispatchLoadCart(dispatch);
+
+      return result;
     } catch {
-      // Access token hết hạn → httpClient sẽ tự refresh (interceptor trong httpClient.ts)
-      // Nếu refresh cũng thất bại, interceptor đã xoá token → trả null
       try {
         const user = await getMyUserInfo();
-        const newToken = await getUserToken(); // lấy token mới sau khi interceptor refresh
-        return { accessToken: newToken ?? accessToken, user };
+        const newToken = await getUserToken();
+        const result = { accessToken: newToken ?? accessToken, user };
+
+        _dispatchLoadCart(dispatch);
+
+        return result;
       } catch {
         return null;
       }
@@ -77,21 +83,28 @@ export const liferayLogin = createAsyncThunk(
   "liferayAuth/login",
   async (
     { email, password }: { email: string; password: string },
-    { rejectWithValue }
+    { rejectWithValue, dispatch }
   ) => {
     try {
-      // loginUser lưu token vào AsyncStorage
+      // loginUser đã gọi ensureUserAccount() để restore accountId vào cache
       const tokens = await loginUser(email, password);
-      // getMyUserInfo dùng http client với token vừa lưu
       const user = await getMyUserInfo();
-      return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token, user };
+
+      // ✅ Load cart ngay sau login để AppHeader badge hiện đúng số lượng
+      _dispatchLoadCart(dispatch);
+
+      return {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        user,
+      };
     } catch (e: any) {
       return rejectWithValue(e.message ?? "Đăng nhập thất bại");
     }
   }
 );
 
-/** Đăng ký – KHÔNG auto-login (Liferay có thể yêu cầu verify email) */
+/** Đăng ký – KHÔNG auto-login */
 export const liferayRegister = createAsyncThunk(
   "liferayAuth/register",
   async (payload: RegisterPayload, { rejectWithValue }) => {
@@ -112,7 +125,7 @@ export const liferayRegister = createAsyncThunk(
   }
 );
 
-/** Refresh access token thủ công (thường không cần – httpClient tự xử lý 401) */
+/** Refresh access token thủ công */
 export const liferayRefreshToken = createAsyncThunk(
   "liferayAuth/refresh",
   async (_, { getState, rejectWithValue }) => {
@@ -126,11 +139,74 @@ export const liferayRefreshToken = createAsyncThunk(
   }
 );
 
-/** Đăng xuất – logoutUser xoá token khỏi AsyncStorage */
-export const liferayLogout = createAsyncThunk(
-  "liferayAuth/logout",
-  async () => { await logoutUser(); }
-);
+/** Đăng xuất */
+export const liferayLogout = createAsyncThunk("liferayAuth/logout", async (_, { dispatch }) => {
+  await logoutUser();
+  // ✅ Xóa cart items khỏi Redux khi logout
+  const { resetCart } = await import("./cartSlice");
+  dispatch(resetCart());
+});
+
+// ─── Helper: dispatch loadCartFromServer không tạo circular import ────────────
+
+/**
+ * Lazy import useCartSync không khả thi trong thunk.
+ * Thay vào đó, dispatch một action đặc biệt mà CartSyncListener lắng nghe,
+ * hoặc import trực tiếp từ cartSlice + cartService.
+ *
+ * Giải pháp đơn giản: import cartService và syncCartFromServer trực tiếp.
+ */
+async function _dispatchLoadCart(dispatch: any): Promise<void> {
+  try {
+    const [{ findOrCreateCart, getCart }, { syncCartFromServer }] = await Promise.all([
+      import("@/src/services/liferay"),
+      import("./cartSlice"),
+    ]);
+
+    const cartId = await findOrCreateCart();
+    if (!cartId) return;
+
+    const cart = await getCart(cartId);
+    if (!cart) return;
+
+    const items = (cart.cartItems ?? []).map((item: any) => {
+      // Đảm bảo thumbnail là absolute URL nếu Liferay trả về path tương đối
+      const thumb: string = item.thumbnail ?? "";
+      const thumbnail =
+        thumb && !thumb.startsWith("http")
+          ? `${ENV.API_URL}${thumb}`
+          : thumb;
+
+      return {
+        id: item.id,
+        cartItemId: item.cartItemId,
+        skuId: item.skuId,
+        name: item.name,
+        thumbnail,
+        price: item.price,
+        promoPrice: item.promoPrice,
+        catalogName: item.catalogName,
+        quantity: item.quantity,
+      };
+    });
+
+    dispatch(
+      syncCartFromServer({
+        cartId: cart.id,
+        items,
+        selectedIds: items.map((i: any) => i.id),
+        coupon: null,
+        summary: cart.summary ?? null,
+      })
+    );
+
+    console.log(
+      `[liferayAuthSlice] ✅ Cart loaded after auth: ${items.length} items`
+    );
+  } catch (e) {
+    console.warn("[liferayAuthSlice] ⚠️ _dispatchLoadCart failed:", e);
+  }
+}
 
 // ─── Slice ────────────────────────────────────────────────────────────────────
 
@@ -138,7 +214,9 @@ const liferayAuthSlice = createSlice({
   name: "liferayAuth",
   initialState,
   reducers: {
-    clearError(state) { state.error = null; },
+    clearError(state) {
+      state.error = null;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -146,38 +224,45 @@ const liferayAuthSlice = createSlice({
       .addCase(rehydrateLiferayAuth.fulfilled, (state, action) => {
         if (action.payload) {
           state.accessToken = action.payload.accessToken;
-          state.user        = action.payload.user;
+          state.user = action.payload.user;
         }
       })
 
       // login
-      .addCase(liferayLogin.pending,   (state) => { state.loading = true;  state.error = null; })
-      .addCase(liferayLogin.fulfilled, (state, { payload }) => {
-        state.loading      = false;
-        state.accessToken  = payload.accessToken;
-        state.refreshToken = payload.refreshToken;
-        state.user         = payload.user;
+      .addCase(liferayLogin.pending, (state) => {
+        state.loading = true;
+        state.error = null;
       })
-      .addCase(liferayLogin.rejected,  (state, { payload }) => {
+      .addCase(liferayLogin.fulfilled, (state, { payload }) => {
         state.loading = false;
-        state.error   = payload as string;
+        state.accessToken = payload.accessToken;
+        state.refreshToken = payload.refreshToken;
+        state.user = payload.user;
+      })
+      .addCase(liferayLogin.rejected, (state, { payload }) => {
+        state.loading = false;
+        state.error = payload as string;
       })
 
       // register
-      .addCase(liferayRegister.pending,   (state) => { state.loading = true;  state.error = null; })
-      .addCase(liferayRegister.fulfilled, (state) => { state.loading = false; })
-      .addCase(liferayRegister.rejected,  (state, { payload }) => {
+      .addCase(liferayRegister.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(liferayRegister.fulfilled, (state) => {
         state.loading = false;
-        state.error   = payload as string;
+      })
+      .addCase(liferayRegister.rejected, (state, { payload }) => {
+        state.loading = false;
+        state.error = payload as string;
       })
 
       // refresh
       .addCase(liferayRefreshToken.fulfilled, (state, { payload }) => {
-        state.accessToken  = payload.access_token;
+        state.accessToken = payload.access_token;
         state.refreshToken = payload.refresh_token;
       })
       .addCase(liferayRefreshToken.rejected, (state) => {
-        // Token không thể refresh → force logout
         return initialState;
       })
 
@@ -191,19 +276,14 @@ export default liferayAuthSlice.reducer;
 
 // ─── Selectors ────────────────────────────────────────────────────────────────
 
-export const selectAccessToken      = (s: RootState) => s.liferayAuth.accessToken;
-export const selectRefreshToken     = (s: RootState) => s.liferayAuth.refreshToken;
-export const selectUser             = (s: RootState) => s.liferayAuth.user;
-export const selectAuthLoading      = (s: RootState) => s.liferayAuth.loading;
-export const selectAuthError        = (s: RootState) => s.liferayAuth.error;
-export const selectIsAuthenticated  = (s: RootState) => !!s.liferayAuth.accessToken;
+export const selectAccessToken = (s: RootState) => s.liferayAuth.accessToken;
+export const selectRefreshToken = (s: RootState) => s.liferayAuth.refreshToken;
+export const selectUser = (s: RootState) => s.liferayAuth.user;
+export const selectAuthLoading = (s: RootState) => s.liferayAuth.loading;
+export const selectAuthError = (s: RootState) => s.liferayAuth.error;
+export const selectIsAuthenticated = (s: RootState) => !!s.liferayAuth.accessToken;
 
-/** Account ID của user (từ Liferay accountBriefs) */
 export const selectAccountId = (s: RootState) =>
   s.liferayAuth.user?.accountBriefs?.[0]?.id ?? null;
 
-/**
- * Channel ID đọc từ ENV (không dùng Constants.expoConfig trong selector).
- * Selector không nhận tham số state vì đây là config tĩnh.
- */
 export const selectChannelId = () => parseInt(ENV.CHANNEL_ID, 10);
