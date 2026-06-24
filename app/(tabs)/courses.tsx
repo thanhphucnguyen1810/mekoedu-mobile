@@ -310,7 +310,7 @@ export default function CatalogScreen() {
           title="Khóa học"
           showCart
           isSearchable
-          placeholder="Tìm kiếm khóa học..."
+          placeholder="Tìm kiếm sản phẩm..."
           searchQuery={searchText}
           onSearchChange={handleSearch}
         />

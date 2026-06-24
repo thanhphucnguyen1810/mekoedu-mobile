@@ -22,9 +22,31 @@ const CHANNEL_ID = ENV.CHANNEL_ID;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// ─── URL helper ───────────────────────────────────────────────────────────────
+
+/**
+ * Chuyển relative URL của Liferay → absolute URL có thể load được.
+ * "/o/commerce-media/..." → "http://host:port/o/commerce-media/..."
+ */
+function toAbsoluteUrl(url: string | undefined | null): string {
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  const base = BASE_URL.endsWith("/") ? BASE_URL.slice(0, -1) : BASE_URL;
+  const path = url.startsWith("/") ? url : `/${url}`;
+  return `${base}${path}`;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function toCartItem(raw: any): CartItem {
+  // Log raw lần đầu để biết Liferay trả field nào
+  if (__DEV__) {
+    const keys = Object.keys(raw);
+    console.log("[cartService] raw cart item keys:", keys.join(", "));
+    console.log("[cartService] raw.name:", raw.name, "| raw.productName:", raw.productName, "| raw.skuName:", raw.skuName);
+    console.log("[cartService] raw.thumbnail:", raw.thumbnail, "| raw.imageUrl:", raw.imageUrl);
+  }
+
   const priceObj = typeof raw.price === "object" && raw.price !== null ? raw.price : null;
   const price = priceObj
     ? (priceObj.price ?? priceObj.finalPrice ?? priceObj.unitPrice ?? 0)
@@ -33,6 +55,7 @@ function toCartItem(raw: any): CartItem {
     ? (priceObj.promoPrice ?? priceObj.discountedPrice ?? undefined)
     : undefined;
 
+  // Lấy name — thử tất cả field có thể có
   const name =
     raw.name ?? raw.sku?.name ?? raw.product?.name ?? raw.skuName ?? raw.productName ?? "";
 
@@ -45,7 +68,11 @@ function toCartItem(raw: any): CartItem {
       : rawThumb;
 
   const catalogName =
-    raw.catalogName ?? raw.product?.catalogName ?? raw.sku?.catalogName ?? "MekoEdu";
+    raw.catalogName ||
+    raw.product?.catalogName ||
+    raw.sku?.catalogName ||
+    "MekoEdu";
+
   const cartItemId = raw.id ?? raw.cartItemId ?? 0;
 
   return {
@@ -96,6 +123,8 @@ let _resolvePromise: Promise<number | null> | null = null;
 export function clearCartCache(): void {
   _cachedCartId = null;
   _resolvePromise = null;
+  AsyncStorage.removeItem(CART_STORAGE_KEY).catch(() => {});
+  console.log("[cartService] 🧹 Cleared cart cache + storage");
 }
 
 // ─── Kiểm tra cart open ──────────────────────────────────────────────────────
@@ -144,21 +173,55 @@ export async function getCart(cartId: number): Promise<Cart | null> {
     if (!token) return null;
 
     const [cartRes, itemsRes] = await Promise.all([
-      axios.get(`${BASE_URL}/o/headless-commerce-delivery-cart/v1.0/carts/${cartId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-      axios.get(`${BASE_URL}/o/headless-commerce-delivery-cart/v1.0/carts/${cartId}/items`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { pageSize: 100 },
-      }),
+      axios.get(
+        `${BASE_URL}/o/headless-commerce-delivery-cart/v1.0/carts/${cartId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      ),
+      axios.get(
+        `${BASE_URL}/o/headless-commerce-delivery-cart/v1.0/carts/${cartId}/items`,
+        { headers: { Authorization: `Bearer ${token}` }, params: { pageSize: 100 } }
+      ),
     ]);
 
-    const cartItems = (itemsRes.data?.items ?? []).map(toCartItem);
+    let cartItems = (itemsRes.data?.items ?? []).map(toCartItem);
+
+    // ✅ Nếu name trống → fetch product để lấy tên thật
+    // Liferay cart item đôi khi không trả name, cần gọi thêm product API
+    const itemsNeedingName = cartItems.filter((i) => !i.name && i.id);
+    if (itemsNeedingName.length > 0) {
+      console.log("[cartService] Fetching product names for", itemsNeedingName.length, "items...");
+      await Promise.allSettled(
+        itemsNeedingName.map(async (item) => {
+          try {
+            const res = await axios.get(
+              `${BASE_URL}/o/headless-commerce-delivery-catalog/v1.0/products/${item.id}`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            const productName = res.data?.name || res.data?.productNames?.["vi_VN"] || res.data?.productNames?.["en_US"] || "";
+            if (productName) {
+              item.name = productName;
+            }
+            // Lấy thumbnail từ product nếu cart item không có
+            if (!item.thumbnail && res.data?.images?.[0]?.src) {
+              item.thumbnail = toAbsoluteUrl(res.data.images[0].src);
+            }
+          } catch (e) {
+            console.warn(`[cartService] Could not fetch product ${item.id}`);
+          }
+        })
+      );
+    }
+
     const summary = toCartSummary(cartRes.data?.summary);
 
     return { ...cartRes.data, cartItems, summary } as Cart;
-  } catch (error) {
-    console.error("[cartService] getCart failed:", error);
+  } catch (error: any) {
+    const status = error?.response?.status;
+    console.error(`[cartService] getCart failed (${status}):`, cartId);
+    if (status === 404 || status === 403) {
+      if (_cachedCartId === cartId) _cachedCartId = null;
+      await AsyncStorage.removeItem(CART_STORAGE_KEY);
+    }
     return null;
   }
 }
@@ -173,9 +236,10 @@ export async function getCart(cartId: number): Promise<Cart | null> {
  */
 export async function findOrCreateCart(): Promise<number | null> {
   if (_cachedCartId) return _cachedCartId;
+  if (_cachedCartId) return _cachedCartId;
 
   if (_resolvePromise) {
-    console.log("[cartService] ⏳ Đang resolve, chờ...");
+    console.log("[cartService] ⏳ Chờ resolve...");
     return _resolvePromise;
   }
 
@@ -304,8 +368,16 @@ export async function addItem(
       }
     );
     return res.data?.id ?? null;
-  } catch (error) {
-    console.error("[cartService] addItem failed:", error);
+  } catch (error: any) {
+    const status = error?.response?.status;
+    console.error(`[cartService] addItem failed (${status}): cartId=${cartId}, skuId=${skuId}`);
+    if (!_retry && (status === 404 || status === 403)) {
+      console.log("[cartService] Cart invalid → tạo cart mới và thử lại");
+      _cachedCartId = null;
+      await AsyncStorage.removeItem(CART_STORAGE_KEY);
+      const newCartId = await findOrCreateCart();
+      if (newCartId) return addItem(newCartId, skuId, quantity, true);
+    }
     return null;
   }
 }
@@ -328,17 +400,14 @@ export async function updateQuantity(
       }
     );
     return true;
-  } catch (error) {
-    console.error("[cartService] updateQuantity failed:", error);
+  } catch (error: any) {
+    console.error(`[cartService] updateQuantity failed (${error?.response?.status}):`, cartItemId);
     return false;
   }
 }
 
 export async function removeItem(cartItemId: number): Promise<boolean> {
-  if (!cartItemId) {
-    console.error("[cartService] removeItem: cartItemId không hợp lệ");
-    return false;
-  }
+  if (!cartItemId) return false;
   try {
     const token = await getUserToken();
     if (!token) return false;
@@ -348,7 +417,7 @@ export async function removeItem(cartItemId: number): Promise<boolean> {
     );
     return true;
   } catch (error: any) {
-    console.error("[cartService] removeItem failed:", cartItemId, error?.response?.status);
+    console.error(`[cartService] removeItem failed (${error?.response?.status}):`, cartItemId);
     return false;
   }
 }
@@ -357,27 +426,22 @@ export async function clearCart(cartId: number): Promise<boolean> {
   try {
     const cart = await getCart(cartId);
     if (!cart?.cartItems?.length) return true;
-
     const token = await getUserToken();
     if (!token) return false;
-
-    const itemIds = cart.cartItems
-      .map((item) => item.cartItemId)
-      .filter((id): id is number => !!id);
-
-    let allSuccess = true;
+    const itemIds = cart.cartItems.map((i) => i.cartItemId).filter((id): id is number => !!id);
+    let ok = true;
     for (const id of itemIds) {
       try {
         await axios.delete(
           `${BASE_URL}/o/headless-commerce-delivery-cart/v1.0/cart-items/${id}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-      } catch (err: any) {
-        console.error(`[cartService] Failed to delete item ${id}:`, err?.response?.status);
-        allSuccess = false;
+      } catch (e: any) {
+        console.error(`[cartService] delete item ${id} failed:`, e?.response?.status);
+        ok = false;
       }
     }
-    return allSuccess;
+    return ok;
   } catch (error) {
     console.error("[cartService] clearCart failed:", error);
     return false;
@@ -462,10 +526,10 @@ export async function checkout(cartId: number): Promise<{
       }
     );
 
-    // Xóa storage vì cart đã chuyển trạng thái
+    // Cart cũ đã thành order → xóa cache để lần mua tiếp tạo cart mới
     await AsyncStorage.removeItem(CART_STORAGE_KEY);
     clearCartCache();
-    console.log("[cartService] ✅ Checkout OK – cart cache cleared");
+    console.log(`[cartService] ✅ Checkout OK, cleared cart cache`);
 
     return {
       orderId: res.data?.id ?? res.data?.orderId ?? cartId,

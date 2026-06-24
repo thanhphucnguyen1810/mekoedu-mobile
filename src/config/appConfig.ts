@@ -31,7 +31,7 @@ export const AppConfig = {
 
   // ----- AppHeader -----
   header: {
-    searchPlaceholder: "Tìm kiếm khóa học...",
+    searchPlaceholder: "Tìm kiếm sản phẩm...",
     cartLabel: "Giỏ hàng",
     notificationLabel: "Thông báo",
   },

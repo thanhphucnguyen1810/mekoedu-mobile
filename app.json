@@ -4,12 +4,12 @@
     "slug": "MekoStore",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./src/assets/images/logo-icon.png",
+    "icon": "./src/assets/images/logo-icon.jpg",
     "scheme": "MekoStore",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./src/assets/images/logo-icon.png",
+      "image": "./src/assets/images/logo-icon.jpg",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -29,7 +29,7 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./src/assets/images/logo-icon.png"
+      "favicon": "./src/assets/images/logo-icon.jpg"
     },
     "plugins": [
       "expo-router",
