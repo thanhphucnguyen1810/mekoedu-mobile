@@ -260,7 +260,7 @@ export default function CartScreen() {
           <FlatList
             data={listData}
             keyExtractor={(row, idx) =>
-              row.type === 'item' ? `item-${row.item.id}`
+              row.type === 'item' ? `item-${row.item.cartItemId}`
               : row.type === 'shopHeader' ? `shopH-${row.shopName}`
               : `${row.type}-${idx}`
             }

@@ -187,14 +187,14 @@ export async function getCart(cartId: number): Promise<Cart | null> {
 
     // ✅ Nếu name trống → fetch product để lấy tên thật
     // Liferay cart item đôi khi không trả name, cần gọi thêm product API
-    const itemsNeedingName = cartItems.filter((i) => !i.name && i.id);
+    const itemsNeedingName = cartItems.filter((i: CartItem) => !i.name && i.id);
     if (itemsNeedingName.length > 0) {
       console.log("[cartService] Fetching product names for", itemsNeedingName.length, "items...");
       await Promise.allSettled(
-        itemsNeedingName.map(async (item) => {
+        itemsNeedingName.map(async (item: CartItem) => {
           try {
             const res = await axios.get(
-              `${BASE_URL}/o/headless-commerce-delivery-catalog/v1.0/products/${item.id}`,
+              `${BASE_URL}/o/headless-commerce-delivery-catalog/v1.0/channels/${CHANNEL_ID}/products/${item.id}`,
               { headers: { Authorization: `Bearer ${token}` } }
             );
             const productName = res.data?.name || res.data?.productNames?.["vi_VN"] || res.data?.productNames?.["en_US"] || "";
@@ -352,7 +352,8 @@ async function waitForCartReady(
 export async function addItem(
   cartId: number,
   skuId: number,
-  quantity = 1
+  quantity = 1,
+  retry = false
 ): Promise<number | null> {
   try {
     const token = await getUserToken();
@@ -371,7 +372,7 @@ export async function addItem(
   } catch (error: any) {
     const status = error?.response?.status;
     console.error(`[cartService] addItem failed (${status}): cartId=${cartId}, skuId=${skuId}`);
-    if (!_retry && (status === 404 || status === 403)) {
+    if (!retry && (status === 404 || status === 403)) {
       console.log("[cartService] Cart invalid → tạo cart mới và thử lại");
       _cachedCartId = null;
       await AsyncStorage.removeItem(CART_STORAGE_KEY);

@@ -5,7 +5,7 @@ import { useTheme } from "@/src/theme";
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from "expo-router";
 import React from "react";
-import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Image, StyleSheet, Text, View } from "react-native";
 
 export default function WelcomeScreen() {
   const { c, spacing } = useTheme();
@@ -20,6 +20,7 @@ export default function WelcomeScreen() {
           source={store.logo}
           style={[{ width: store.logoWidth, height: store.logoHeight }]}
           resizeMode="contain"
+          testID="app_logo" // 👈 THÊM DÒNG NÀY
         />
       </View>
 
@@ -27,7 +28,10 @@ export default function WelcomeScreen() {
       <View style={styles.authSection}>
         <View style={styles.authTitleContainer}>
           <View style={[styles.authLine, { backgroundColor: c.border }]} />
-          <Text style={[styles.authTitle, { color: c.textSub }]}>
+          <Text 
+            style={[styles.authTitle, { color: c.textSub }]}
+            testID="auth_title" // 👈 THÊM DÒNG NÀY
+          >
             {welcomeText.authTitle}
           </Text>
           <View style={[styles.authLine, { backgroundColor: c.border }]} />
@@ -38,39 +42,22 @@ export default function WelcomeScreen() {
             title={welcomeText.loginButton}
             onPress={() => router.push("/(auth)/login")}
             variant="primary"
+            testID="login_button" // 👈 THÊM DÒNG NÀY
           />
           <AppButton
             title={welcomeText.registerButton}
             onPress={() => router.push("/(auth)/register")}
             variant="outline"
+            testID="register_button" // 👈 THÊM DÒNG NÀY
           />
         </View>
 
-        {/* <View style={styles.socialSection}>
-          <View style={styles.dividerContainer}>
-            <View style={[styles.divider, { backgroundColor: c.border }]} />
-            <Text style={[styles.dividerText, { color: c.textSub }]}>
-              {welcomeText.socialDivider}
-            </Text>
-            <View style={[styles.divider, { backgroundColor: c.border }]} />
-          </View>
-
-          <View style={styles.socialButtons}>
-            <TouchableOpacity style={[styles.socialBtn, { borderColor: c.border }]}>
-              <Ionicons name="logo-google" size={22} color="#DB4437" />
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.socialBtn, { borderColor: c.border }]}>
-              <Ionicons name="logo-facebook" size={22} color="#1877F2" />
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.socialBtn, { borderColor: c.border }]}>
-              <Ionicons name="logo-apple" size={22} color={c.text} />
-            </TouchableOpacity>
-          </View>
-        </View> */}
-
         <View style={styles.supportSection}>
           <Ionicons name="shield-checkmark-outline" size={14} color={c.primary} />
-          <Text style={[styles.supportText, { color: c.textSub }]}>
+          <Text 
+            style={[styles.supportText, { color: c.textSub }]}
+            testID="support_text" // 👈 THÊM DÒNG NÀY
+          >
             {welcomeText.supportText}
           </Text>
         </View>
@@ -78,6 +65,8 @@ export default function WelcomeScreen() {
     </View>
   );
 }
+
+// ... styles giữ nguyên
 
 const styles = StyleSheet.create({
   container: { 

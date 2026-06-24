@@ -1,4 +1,5 @@
 // app/(tabs)/categories.tsx  (hoặc categories screen của bạn)
+import { AppHeader } from "@/src/components/common";
 import { AppText } from "@/src/components/common/AppText";
 import CourseCard from "@/src/components/CourseCard";
 import { Skeleton } from "@/src/components/Skeleton";
@@ -11,7 +12,8 @@ import { selectCartCount } from "@/src/store/slices/cartSlice";
 import { useTheme } from "@/src/theme";
 import { CatalogProduct, Category } from "@/src/types/liferay";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { usePathname } from "expo-router";
+import { router, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -24,7 +26,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View
 } from "react-native";
@@ -131,6 +132,7 @@ export default function CategoriesScreen() {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
   const cartCount = useSelector(selectCartCount);
+  const { selectedId } = useLocalSearchParams<{ selectedId?: string }>();
 
   const [parentCats, setParentCats] = useState<Category[]>([]);
   const [childCats, setChildCats]   = useState<Category[]>([]);
@@ -144,7 +146,6 @@ export default function CategoriesScreen() {
   const [hasMore, setHasMore]       = useState(true);
   const [page, setPage]             = useState(1);
   const [searchText, setSearchText] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
 
   const fetchingRef = useRef(false);
   const pageRef     = useRef(1);
@@ -159,8 +160,11 @@ export default function CategoriesScreen() {
         const parents = await getCategories();
         setParentCats(parents);
         if (parents.length > 0) {
-          setSelParent(parents[0].id);
-          loadChildren(parents[0].id);
+          const targetId = selectedId
+            ? parents.find(p => String(p.id) === String(selectedId))?.id ?? parents[0].id
+            : parents[0].id;
+          setSelParent(targetId);
+          loadChildren(targetId);
         }
       } catch (e) {
         console.warn("getCategories failed", e);
@@ -294,36 +298,13 @@ export default function CategoriesScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: c.bg }]}>
       {/* ── Top bar ── */}
-      <View style={[styles.topBar, { paddingTop: insets.top + 6, backgroundColor: c.bg, borderBottomColor: c.border }]}>
-        {/* Search */}
-        <View style={[styles.searchWrap, { backgroundColor: c.bgSoft, borderColor: searchFocused ? c.primary : c.border }]}>
-          <Ionicons name="search-outline" size={16} color={searchFocused ? c.primary : c.textSub} style={{ marginLeft: 10 }} />
-          <TextInput
-            style={[styles.searchInput, { color: c.text }]}
-            value={searchText}
-            onChangeText={setSearchText}
-            placeholder="Tìm trong danh mục..."
-            placeholderTextColor={c.textSub}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-            returnKeyType="search"
-          />
-          {searchText.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchText("")} style={styles.clearIcon}>
-              <Ionicons name="close-circle" size={16} color={c.textSub} />
-            </TouchableOpacity>
-          )}
-        </View>
-        {/* Cart */}
-        <TouchableOpacity style={styles.cartBtn} onPress={() => router.push("/cart")} activeOpacity={0.8}>
-          <Ionicons name="cart-outline" size={22} color={c.text} />
-          {cartCount > 0 && (
-            <View style={[styles.cartBadge, { backgroundColor: c.primary }]}>
-              <AppText style={styles.cartBadgeText}>{cartCount > 9 ? "9+" : cartCount}</AppText>
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
+      <AppHeader
+        isSearchable
+        placeholder="Tìm trong danh mục..."
+        searchQuery={searchText}
+        onSearchChange={setSearchText}
+        showCart
+      />
 
       {/* ── Body: sidebar + content ── */}
       <View style={styles.body}>
@@ -403,6 +384,74 @@ export default function CategoriesScreen() {
           )}
         </View>
       </View>
+      {/* ── Bottom Tab Bar ── */}
+      <BottomTabBar insets={insets} />
+    </View>
+  );
+}
+
+function BottomTabBar({ insets }: { insets: any }) {
+  const { c } = useTheme();
+  const router = useRouter();
+  const pathname = usePathname();
+  const TAB_HEIGHT = 60;
+
+  const tabs = [
+    { label: "Trang chủ", icon: "home-outline", activeIcon: "home", route: "/(tabs)/home" },
+    { label: "Cửa hàng", icon: "storefront-outline", activeIcon: "storefront", route: "/(tabs)/courses" },
+    { label: "Đơn hàng", icon: "receipt-outline", activeIcon: "receipt", route: "/(tabs)/orders" },
+    { label: "Tài khoản", icon: "person-outline", activeIcon: "person", route: "/(tabs)/profile" },
+  ];
+
+  // Hàm kiểm tra tab có đang active không
+  const isActive = (route: string) => {
+    return pathname === route;
+  };
+
+  return (
+    <View style={{
+      position: "absolute", 
+      bottom: 0, 
+      left: 0, 
+      right: 0,
+      height: TAB_HEIGHT + insets.bottom,
+      backgroundColor: c.bg,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.border,
+      flexDirection: "row",
+      paddingBottom: insets.bottom,
+    }}>
+      {tabs.map(tab => {
+        const active = isActive(tab.route);
+        return (
+          <TouchableOpacity
+            key={tab.route}
+            style={{ 
+              flex: 1, 
+              alignItems: "center", 
+              justifyContent: "center", 
+              gap: 3 
+            }}
+            onPress={() => router.push(tab.route as any)}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name={(active ? tab.activeIcon : tab.icon) as any}
+              size={22}
+              color={active ? c.primary : c.textSub}
+            />
+            <AppText 
+              style={{ 
+                fontSize: 10, 
+                color: active ? c.primary : c.textSub, 
+                fontWeight: active ? "600" : "400" 
+              }}
+            >
+              {tab.label}
+            </AppText>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -410,36 +459,6 @@ export default function CategoriesScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-
-  // Top bar
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingBottom: 10,
-    paddingHorizontal: 10,
-    gap: 8,
-    borderBottomWidth: 0.5,
-  },
-  searchWrap: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    gap: 6,
-  },
-  searchInput: { flex: 1, height: 40, fontSize: 13, paddingRight: 10 },
-  clearIcon: { paddingRight: 8 },
-  cartBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  cartBadge: {
-    position: "absolute", top: 4, right: 4,
-    minWidth: 16, height: 16, borderRadius: 8,
-    alignItems: "center", justifyContent: "center", paddingHorizontal: 3,
-  },
-  cartBadgeText: { color: "#fff", fontSize: 9, fontWeight: "700" },
-
-  // Body
   body: { flex: 1, flexDirection: "row" },
 
   // Sidebar

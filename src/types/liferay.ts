@@ -39,7 +39,6 @@ export interface UserInfo {
 
 export interface ProductImage {
   id: number;
-  /** URL đã được normalize (absolute) */
   src: string;
   url?: string;
 }
