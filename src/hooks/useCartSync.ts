@@ -1,17 +1,10 @@
 /**
  * src/hooks/useCartSync.ts
- *
- * THAY ĐỔI SO VỚI BẢN CŨ:
- * - removeItemAsync, updateQuantityAsync, clearCartAsync trả về boolean
- *   để caller biết thành công hay thất bại và hiện toast phù hợp.
- * - Thêm optional onSuccess / onError callbacks vào các hàm mutate.
- * - addToCartAsync: trả về { cartItemId, alreadyInCart } để UI phân biệt
- *   "thêm mới" vs "đã có trong giỏ".
  */
 
 import { ENV } from "@/src/config/env";
-import { findOrCreateCart } from "@/src/services/liferay";
 import * as cartService from "@/src/services/liferay";
+import { findOrCreateCart } from "@/src/services/liferay";
 import {
   addToCart,
   clearCart as localClearCart,
@@ -33,7 +26,6 @@ import { useDispatch, useSelector } from "react-redux";
 
 const normalizeThumb = (thumb?: string): string => {
   if (!thumb) return "";
-  // Liferay đôi khi trả về path tương đối /o/commerce-media/...
   return thumb.startsWith("http") ? thumb : `${ENV.API_URL}${thumb}`;
 };
 
@@ -43,6 +35,8 @@ const mapLiferayItems = (items: CartItem[]) =>
     cartItemId: item.cartItemId,
     skuId: item.skuId,
     name: item.name,
+    displayName: item.displayName,
+    optionsLabel: item.optionsLabel,
     thumbnail: normalizeThumb(item.thumbnail),
     price: item.price,
     promoPrice: item.promoPrice,
@@ -111,6 +105,8 @@ export const useCartSync = () => {
       skuId: number;
       quantity?: number;
       name: string;
+      displayName?: string;
+      optionsLabel?: string;
       price: number;
       promoPrice?: number;
       thumbnail?: string;
@@ -140,6 +136,11 @@ export const useCartSync = () => {
         );
 
         if (cartItemId) {
+          // Build displayName nhất quán với cartService.toCartItem
+          const optionsLabel = params.optionsLabel || '';
+          const displayName = params.displayName
+            || (optionsLabel ? `${params.name} (${optionsLabel})` : params.name);
+
           dispatch(
             addToCart({
               id: params.productId,
@@ -147,13 +148,15 @@ export const useCartSync = () => {
               skuId: params.skuId,
               quantity: params.quantity ?? 1,
               name: params.name,
+              displayName,
+              optionsLabel,
               price: params.price,
               promoPrice: params.promoPrice,
               thumbnail: params.thumbnail || "",
               catalogName: params.catalogName || "",
             })
           );
-          // Sync để lấy summary chính xác từ server
+          // Sync để lấy displayName, optionsLabel, summary chính xác từ server
           await loadCartFromServer();
         }
         return cartItemId;
@@ -170,6 +173,12 @@ export const useCartSync = () => {
   // ── 3. UPDATE QUANTITY ────────────────────────────────────────────────────
   /**
    * Cập nhật số lượng.
+   *
+   * Dùng cartItemId (không phải productId) để dispatch optimistic update,
+   * vì một sản phẩm có thể có nhiều SKU/biến thể khác nhau trong giỏ.
+   * Redux slice cần hỗ trợ action update theo cartItemId — nếu slice hiện tại
+   * chỉ dùng productId (id), loadCartFromServer() sau PATCH sẽ tự đồng bộ lại.
+   *
    * @returns true nếu thành công, false nếu thất bại
    */
   const updateQuantityAsync = useCallback(
@@ -179,15 +188,19 @@ export const useCartSync = () => {
       newQty: number
     ): Promise<boolean> => {
       dispatch(setSyncing(true));
-      // Optimistic update
-      dispatch(localUpdateQuantity({ id: productId, quantity: newQty }));
+
+      // Optimistic update — dispatch theo cartItemId nếu slice hỗ trợ,
+      // fallback về productId để tương thích với slice cũ
+      dispatch(localUpdateQuantity({ id: cartItemId, quantity: newQty }));
+
       try {
         const ok = await cartService.updateQuantity(cartItemId, newQty);
+        // Luôn sync lại từ server để đảm bảo displayName/optionsLabel/summary đúng
         await loadCartFromServer();
         return ok;
       } catch (err) {
         console.error("[useCartSync] updateQuantityAsync:", err);
-        // Rollback
+        // Rollback bằng cách reload từ server
         await loadCartFromServer();
         return false;
       } finally {
@@ -199,7 +212,6 @@ export const useCartSync = () => {
 
   // ── 4. XOÁ 1 SẢN PHẨM ────────────────────────────────────────────────────
   /**
-   * Xóa sản phẩm khỏi giỏ.
    * @returns true nếu thành công, false nếu thất bại
    */
   const removeItemAsync = useCallback(
@@ -212,8 +224,8 @@ export const useCartSync = () => {
         return false;
       }
       dispatch(setSyncing(true));
-      // Optimistic update
-      dispatch(localRemoveFromCart(productId));
+      // Optimistic: xóa khỏi UI ngay theo cartItemId
+      dispatch(localRemoveFromCart(cartItemId));
       try {
         const ok = await cartService.removeItem(cartItemId);
         await loadCartFromServer();
@@ -231,7 +243,6 @@ export const useCartSync = () => {
 
   // ── 5. XOÁ TOÀN BỘ ───────────────────────────────────────────────────────
   /**
-   * Xóa toàn bộ giỏ hàng.
    * @returns true nếu thành công
    */
   const clearCartAsync = useCallback(async (): Promise<boolean> => {

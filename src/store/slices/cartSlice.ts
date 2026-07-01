@@ -5,10 +5,12 @@ import { createSelector, createSlice, PayloadAction } from '@reduxjs/toolkit';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CartItem {
-  id: string | number;       // productId – key để identify trong Redux
-  cartItemId: number;        // Liferay cartItemId – dùng cho PATCH / DELETE API
+  id: string | number;
+  cartItemId: number;
   skuId: number | string;
   name: string;
+  displayName?: string;    // ★ thêm
+  optionsLabel?: string;   // ★ thêm
   thumbnail?: string;
   price: number;
   promoPrice?: number;
@@ -221,8 +223,10 @@ const cartSlice = createSlice({
           return {
             ...serverItem,
             name: serverItem.name || local.name,
+            displayName: serverItem.displayName || local?.displayName,
+            optionsLabel: serverItem.optionsLabel || local.optionsLabel, 
             thumbnail: serverItem.thumbnail || local.thumbnail,
-            catalogName: local.catalogName || serverItem.catalogName
+            catalogName: serverItem.catalogName || local?.catalogName,
           };
         }
         return {

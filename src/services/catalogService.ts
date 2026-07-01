@@ -30,9 +30,12 @@ function normalizeProduct(product: CatalogProduct): CatalogProduct {
  */
 function mapSortParam(sort?: string): string | undefined {
   switch (sort) {
-    case 'price_asc':   return 'price:asc';
-    case 'price_desc':  return 'price:desc';
+    case 'price_asc':
+    case 'price_desc':
+      return undefined;
     case 'newest':      return 'createDate:desc';
+    case 'name_asc':    return 'name:asc';
+    case 'name_desc':   return 'name:desc';
     case 'popular':     return undefined; // default của Liferay, không cần sort param
     default:            return sort || undefined;
   }
@@ -64,17 +67,46 @@ export async function getProducts(params: ProductQueryParams = {}): Promise<Prod
     { params: query }
   );
 
+  // console.log(res.data);
+  
+
   return {
     ...res.data,
     items: (res.data.items ?? []).map(normalizeProduct),
   };
 }
 
+// Whitelist field gốc cho getProduct.
+// ⚠️ `fields` là whitelist tuyệt đối — field nào KHÔNG có trong list này sẽ
+// bị Liferay cắt bỏ khỏi response, dù đã khai báo trong `nestedFields`.
+// Nếu UI cần thêm field nào (vd: description, shortDescription,
+// productSpecifications, categories, productStatus...), phải thêm tên field
+// đó vào đây, không thể chỉ khai trong NESTED.
+const PRODUCT_DETAIL_FIELDS = [
+  "id",
+  "name",
+  "productNames",
+  "catalogName",
+  "images",
+  "skus",
+  "description",
+  "shortDescription",
+  "productSpecifications",
+  "categories",
+  "productStatus",
+].join(",");
+
 export async function getProduct(productId: number): Promise<CatalogProduct> {
   const res = await http.get<CatalogProduct>(
     `/o/headless-commerce-delivery-catalog/v1.0/channels/${ENV.CHANNEL_ID}/products/${productId}`,
-    { params: { nestedFields: NESTED } }
+    { params: { nestedFields: NESTED, fields: PRODUCT_DETAIL_FIELDS } }
   );
+
+  if (__DEV__) {
+    // ★ Log toàn bộ object để debug field thực tế Liferay trả về
+    console.log("[DEBUG] FULL PRODUCT:", JSON.stringify(res.data, null, 2));
+  }
+  
   return normalizeProduct(res.data);
 }
 
@@ -232,4 +264,3 @@ function normalizeCategory(raw: any): Category {
     numberOfTaxonomyCategories: raw.numberOfTaxonomyCategories ?? 0,
   };
 }
-

@@ -1,13 +1,15 @@
 import { AppHeader } from "@/src/components/common";
+import { SkuSelector } from "@/src/components/SkuSelector";
 import { useCartSync } from "@/src/hooks/useCartSync";
 import { useFlyToCart } from "@/src/hooks/useFlyToCart";
 import { getProduct } from "@/src/services/liferay";
 import { Colors } from "@/src/theme";
 import type { CatalogProduct } from "@/src/types/liferay";
+import { findMatchingSku, groupOptionsByKey, isSelectionComplete, SkuSelection } from "@/src/utils/skuUtils";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -21,6 +23,7 @@ import {
   useWindowDimensions,
   View
 } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 const stripHtml = (html?: string) =>
@@ -68,8 +71,8 @@ const ImageCarousel = ({ images }: { images: string[] }) => {
           <View style={{ width, height: IMG_H, overflow: 'hidden' }}>
             <Image
               source={{ uri: item }}
-              style={{ 
-                width: width, 
+              style={{
+                width: width,
                 height: IMG_H,
               }}
               contentFit="cover"
@@ -120,9 +123,11 @@ const MetaRow = ({
 
 const SpecCard = ({ specs }: { specs: any[] }) => {
   if (specs.length === 0) return null;
+  // console.log(specs);
+  
   return (
     <View style={cs.card}>
-      <Text style={cs.cardTitle}>Thông số khóa học</Text>
+      <Text style={cs.cardTitle}>Thông số sản phẩm</Text>
       {specs.map((s: any, i: number) => (
         <View
           key={i}
@@ -150,7 +155,7 @@ const DescCard = ({ short, full }: { short?: string; full?: string }) => {
 
   return (
     <View style={cs.card}>
-      <Text style={cs.cardTitle}>Mô tả khóa học</Text>
+      <Text style={cs.cardTitle}>Mô tả sản phẩm</Text>
       {short ? <Text style={cs.shortDesc}>{stripHtml(short)}</Text> : null}
       {fullText ? (
         <>
@@ -182,14 +187,17 @@ const Tag = ({ label }: { label: string }) => (
 // ─── Toast nhẹ (giống CourseCard) ───────────────────────────────────────────
 const InlineToast = ({
   msg,
+  bottomOffset = 90,
 }: {
   msg: { text: string; type: "success" | "error" } | null;
+  bottomOffset?: number;
 }) => {
   if (!msg) return null;
   return (
     <View
       style={[
         cs.toast,
+        { bottom: bottomOffset },
         {
           backgroundColor:
             msg.type === "success"
@@ -213,8 +221,9 @@ export default function CourseDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const scrollY = useRef(new Animated.Value(0)).current;
+  const insets = useSafeAreaInsets();
 
-  // ✅ Dùng useCartSync thay vì dispatch addToCart local
+  //  Dùng useCartSync thay vì dispatch addToCart local
   const { addToCartAsync } = useCartSync();
   const { flyFrom } = useFlyToCart();
 
@@ -222,6 +231,9 @@ export default function CourseDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [isAddingCart, setIsAddingCart] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  // ── SKU selection state ────────────────────────────────────────────────────
+  const [skuSelection, setSkuSelection] = useState<SkuSelection>({});
 
   // Ref nút giỏ hàng để đo vị trí fly animation
   const cartBtnRef = useRef<View>(null);
@@ -247,14 +259,33 @@ export default function CourseDetailScreen() {
     toastTimer.current = setTimeout(() => setToastMsg(null), 2200);
   };
 
+  // ── Tính toán SKU đang chọn ────────────────────────────────────────────────
+  const skus = course?.skus ?? [];
+  const skuGroups = useMemo(() => groupOptionsByKey(skus as any[]), [skus]);
+  const selectedSku = useMemo(() => findMatchingSku(skus as any[], skuSelection), [skus, skuSelection]);
+  const hasOptions = skuGroups.length > 0;
+  const selectionComplete = !hasOptions || isSelectionComplete(skuGroups, skuSelection);
+
   const handleAddToCart = async () => {
     if (!course || isAddingCart) return;
 
-    const sku = course.skus?.[0] as any;
-    const productId = sku?.productId ?? (course as any)?.productId ?? course.id;
-    const skuId = sku?.skuId ?? sku?.id ?? 0;
-    const price: number = sku?.price?.price ?? 0;
-    const promoPrice: number | undefined = sku?.price?.promoPrice ?? undefined;
+    if (hasOptions && !selectionComplete) {
+      showToast("Vui lòng chọn phân loại sản phẩm", "error");
+      return;
+    }
+
+    const sku = (selectedSku ?? skus[0]) as any;
+    if (!sku) {
+      showToast("Không tìm thấy SKU sản phẩm", "error");
+      return;
+    }
+
+    const skuId = sku.id ?? sku.skuId ?? 0;
+    const price: number = sku.price?.price ?? 0;
+    const promoPrice: number | undefined =
+      sku.price?.promoPrice && sku.price.promoPrice < price
+        ? sku.price.promoPrice
+        : undefined;
     const imageUrl = course.images?.[0]
       ? typeof course.images[0] === "string"
         ? course.images[0]
@@ -266,13 +297,28 @@ export default function CourseDetailScreen() {
       return;
     }
 
+    // ── Tạo optionsLabel từ skuOptions ──
+    const skuOptions = sku.skuOptions || [];
+    const optionsLabel = skuOptions
+      .map((opt: any) => {
+        const name = opt.skuOptionName || '';
+        const value = opt.skuOptionValueNames?.[0] || '';
+        return value ? `${name}: ${value}` : '';
+      })
+      .filter(Boolean)
+      .join(' - ');
+
+    const displayName = course.name;
+
     setIsAddingCart(true);
     try {
       const cartItemId = await addToCartAsync({
-        productId,
+        productId: course.id,
         skuId,
         quantity: 1,
         name: course.name,
+        displayName,     
+        optionsLabel,  
         price,
         promoPrice,
         thumbnail: imageUrl,
@@ -280,7 +326,6 @@ export default function CourseDetailScreen() {
       });
 
       if (cartItemId) {
-        // ✅ Trigger fly animation từ vị trí nút giỏ hàng
         cartBtnRef.current?.measureInWindow((x, y, width, height) => {
           const origin = { x: x + width / 2, y: y + height / 2 };
           flyFrom(origin, MEKO_RED, imageUrl);
@@ -296,7 +341,7 @@ export default function CourseDetailScreen() {
     }
   };
 
-  // ✅ Mua ngay: thêm vào giỏ rồi navigate
+  //  Mua ngay: thêm vào giỏ rồi navigate
   const handleBuyNow = async () => {
     if (!course || isAddingCart) return;
     await handleAddToCart();
@@ -306,7 +351,7 @@ export default function CourseDetailScreen() {
   if (loading) {
     return (
       <View style={cs.screen}>
-        <AppHeader title="Chi tiết khóa học" showBack showCart />
+        <AppHeader title="Chi tiết sản phẩm" showBack showCart />
         <View style={cs.center}>
           <ActivityIndicator size="large" color={Colors.primary[500]} />
         </View>
@@ -317,10 +362,10 @@ export default function CourseDetailScreen() {
   if (!course) {
     return (
       <View style={cs.screen}>
-        <AppHeader title="Chi tiết khóa học" showBack showCart />
+        <AppHeader title="Chi tiết sản phẩm" showBack showCart />
         <View style={cs.center}>
           <MaterialCommunityIcons name="book-off-outline" size={48} color={Colors.neutral[300]} />
-          <Text style={cs.emptyText}>Không tìm thấy khóa học</Text>
+          <Text style={cs.emptyText}>Không tìm thấy sản phẩm</Text>
           <TouchableOpacity onPress={() => router.back()} style={cs.backLink}>
             <Text style={cs.backLinkText}>← Quay lại</Text>
           </TouchableOpacity>
@@ -329,10 +374,13 @@ export default function CourseDetailScreen() {
     );
   }
 
-  // ── Tính toán giá ──────────────────────────────────────────────────────────
-  const sku = course.skus?.[0] as any;
-  const price: number = sku?.price?.price ?? 0;
-  const promoPrice: number | undefined = sku?.price?.promoPrice ?? undefined;
+  // ── Tính toán giá — ưu tiên selectedSku nếu đã chọn, fallback sku[0] ──────
+  const activeSku = (selectedSku ?? skus[0]) as any;
+  const price: number = activeSku?.price?.price ?? 0;
+  const promoPrice: number | undefined =
+    activeSku?.price?.promoPrice && activeSku.price.promoPrice < price
+      ? activeSku.price.promoPrice
+      : undefined;
   const finalPrice = promoPrice ?? price;
   const discountPct =
     promoPrice && price > 0
@@ -429,8 +477,8 @@ export default function CourseDetailScreen() {
             {course.catalogName ? (
               <MetaRow icon="store-outline" label="Danh mục" value={course.catalogName} />
             ) : null}
-            {sku?.sku ? (
-              <MetaRow icon="barcode" label="Mã SKU" value={sku.sku} />
+            {activeSku?.sku ? (
+              <MetaRow icon="barcode" label="Mã SKU" value={activeSku.sku} />
             ) : null}
             {course.productStatus ? (
               <MetaRow
@@ -439,16 +487,32 @@ export default function CourseDetailScreen() {
                 value={course.productStatus === "approved" ? "Đang mở bán" : course.productStatus}
               />
             ) : null}
-            {sku?.availableQuantity !== undefined ? (
+            {activeSku?.availableQuantity !== undefined ? (
               <MetaRow
                 icon="account-group-outline"
                 label="Còn chỗ"
-                value={sku.availableQuantity > 0 ? `${sku.availableQuantity} chỗ` : "Hết chỗ"}
+                value={activeSku.availableQuantity > 0 ? `${activeSku.availableQuantity} chỗ` : "Hết chỗ"}
               />
             ) : null}
           </View>
 
           <DescCard short={course.shortDescription} full={course.description} />
+
+          {/* ── SkuSelector inline (hiển thị khi có phân loại) ── */}
+          {skuGroups.length > 0 && (
+            <View style={cs.card}>
+              <Text style={cs.cardTitle}>Phân loại</Text>
+              <SkuSelector
+                skus={skus as any[]}
+                selection={skuSelection}
+                onChange={(optKey, valueKey) =>
+                  setSkuSelection((prev) => ({ ...prev, [optKey]: valueKey }))
+                }
+                selectedSku={selectedSku as any}
+              />
+            </View>
+          )}
+
           <SpecCard specs={otherSpecs} />
 
           {lessonSpecs.length > 0 && (
@@ -485,7 +549,7 @@ export default function CourseDetailScreen() {
       </ScrollView>
 
       {/* ── Bottom action bar ── */}
-      <View style={cs.bottomBar}>
+      <View style={[cs.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
         <View style={cs.bottomInner}>
           <View>
             <Text style={cs.bottomPrice}>{formatPrice(finalPrice)}</Text>
@@ -495,10 +559,13 @@ export default function CourseDetailScreen() {
           </View>
 
           <View style={cs.btnRow}>
-            {/* ✅ Nút thêm giỏ hàng với ref để đo vị trí fly animation */}
+            {/*  Nút thêm giỏ hàng với ref để đo vị trí fly animation */}
             <View ref={cartBtnRef} collapsable={false}>
               <TouchableOpacity
-                style={[cs.cartBtn, isAddingCart && { opacity: 0.6 }]}
+                style={[
+                  cs.cartBtn,
+                  (isAddingCart || (hasOptions && !selectionComplete)) && { opacity: 0.6 },
+                ]}
                 onPress={handleAddToCart}
                 disabled={isAddingCart}
                 activeOpacity={0.85}
@@ -516,13 +583,21 @@ export default function CourseDetailScreen() {
             </View>
 
             <TouchableOpacity
-              style={[cs.buyBtn, isAddingCart && { opacity: 0.6 }]}
+              style={[
+                cs.buyBtn,
+                isAddingCart && { opacity: 0.6 },
+                hasOptions && !selectionComplete && { backgroundColor: Colors.neutral[300] },
+              ]}
               activeOpacity={0.85}
               onPress={handleBuyNow}
               disabled={isAddingCart}
             >
               <Text style={cs.buyBtnText}>
-                {isAddingCart ? "Đang thêm..." : "Mua ngay"}
+                {isAddingCart
+                  ? "Đang thêm..."
+                  : hasOptions && !selectionComplete
+                  ? "Chọn phân loại"
+                  : "Mua ngay"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -530,7 +605,7 @@ export default function CourseDetailScreen() {
       </View>
 
       {/* Toast nổi góc dưới màn hình */}
-      <InlineToast msg={toastMsg} />
+      <InlineToast msg={toastMsg} bottomOffset={insets.bottom + 90} />
     </View>
   );
 }

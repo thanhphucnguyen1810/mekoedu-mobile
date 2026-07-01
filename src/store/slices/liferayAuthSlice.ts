@@ -58,7 +58,7 @@ export const rehydrateLiferayAuth = createAsyncThunk(
       const user = await getMyUserInfo();
       const result = { accessToken, user };
 
-      // ✅ Load cart sau khi rehydrate để badge hiện đúng
+      // Load cart sau khi rehydrate để badge hiện đúng
       _dispatchLoadCart(dispatch);
 
       return result;
@@ -170,7 +170,6 @@ async function _dispatchLoadCart(dispatch: any): Promise<void> {
     if (!cart) return;
 
     const items = (cart.cartItems ?? []).map((item: any) => {
-      // Đảm bảo thumbnail là absolute URL nếu Liferay trả về path tương đối
       const thumb: string = item.thumbnail ?? "";
       const thumbnail =
         thumb && !thumb.startsWith("http")
@@ -182,6 +181,8 @@ async function _dispatchLoadCart(dispatch: any): Promise<void> {
         cartItemId: item.cartItemId,
         skuId: item.skuId,
         name: item.name,
+        displayName: item.displayName, 
+        optionsLabel: item.optionsLabel, 
         thumbnail,
         price: item.price,
         promoPrice: item.promoPrice,

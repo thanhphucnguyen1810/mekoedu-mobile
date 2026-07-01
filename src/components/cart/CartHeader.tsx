@@ -8,7 +8,7 @@ import { AppText } from '@/src/components/common';
 import { AppConfig } from '@/src/config/appConfig';
 import { Colors, Spacing } from '@/src/theme';
 
-const LAYOUT_PADDING = 8; // 👈 khai báo tại đây
+const LAYOUT_PADDING = 8;
 
 export function CartHeader({
   itemCount,

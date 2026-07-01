@@ -43,10 +43,26 @@ export interface ProductImage {
   url?: string;
 }
 
+export interface SkuOption {
+  key: number;
+  price: string;
+  priceType: string;
+  quantity: string;
+  skuOptionId: number;
+  skuOptionKey: string;
+  skuOptionName: string;
+  skuOptionValueId: number;
+  skuOptionValueKey: string;
+  skuOptionValueNames: string[];
+  value: number;
+}
+
 export interface ProductSku {
-  price: number;
-  promoPrice: number;
+  id: number;
   sku: string;
+  price: number;
+  promoPrice?: number;
+  skuOptions?: SkuOption[];
 }
 
 export interface ProductSpecification {
@@ -59,6 +75,7 @@ export interface CatalogProduct {
   id: number;
   productId?: number;
   name: string;
+  productNames?: Record<string, string>;
   description?: string;
   shortDescription?: string;
   thumbnail?: string;
@@ -105,10 +122,11 @@ export interface Category {
 export interface CartItem {
   id: number;
   cartItemId: number; 
-  productId: number;
   skuId: number;
   quantity: number;
   name: string;
+  displayName: string;
+  optionsLabel?: string;
   price: number;
   promoPrice?: number;
   thumbnail?: string;

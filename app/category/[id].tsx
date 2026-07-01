@@ -334,10 +334,10 @@ export default function CategoryScreen() {
                   <AppText style={styles.emptyEmoji}>🔎</AppText>
                 </View>
                 <AppText variant="h4" style={[styles.emptyTitle, { color: c.text }]}>
-                  Không có khóa học nào
+                  Không có sản phẩm nào
                 </AppText>
                 <AppText variant="body" style={[{ color: c.textSub, textAlign: 'center' }]}>
-                  Chưa có khóa học trong danh mục này
+                  Chưa có sản phẩm trong danh mục này
                 </AppText>
               </View>
             ) : null

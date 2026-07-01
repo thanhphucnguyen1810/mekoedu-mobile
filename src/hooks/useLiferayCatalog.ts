@@ -15,7 +15,7 @@ interface UseLiferayProductsReturn {
   error: string | null;
   hasMore: boolean;
   loadMore: () => Promise<void>;
-  applyFilters: (filters: { search?: string; categoryId?: number }) => void;
+  applyFilters: (filters: { search?: string; categoryId?: number; sort?: string }) => void;
   refetch: () => Promise<void>;
 }
 
@@ -23,56 +23,46 @@ export function useLiferayProducts(
   options: UseLiferayProductsOptions = {}
 ): UseLiferayProductsReturn {
   const { pageSize = 10, initialCategoryId, initialSearch = '' } = options;
-  
-  const [products, setProducts] = useState<CatalogProduct[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
+
+  const [products, setProducts]       = useState<CatalogProduct[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState<string | null>(null);
+  const [hasMore, setHasMore]         = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const [search, setSearch] = useState(initialSearch);
-  const [categoryId, setCategoryId] = useState<number | undefined>(initialCategoryId);
-  const [totalCount, setTotalCount] = useState(0);
-  
+  const [search, setSearch]           = useState(initialSearch);
+  const [categoryId, setCategoryId]   = useState<number | undefined>(initialCategoryId);
+  const [sort, setSort]               = useState<string | undefined>(undefined); // ← thêm
+  const [totalCount, setTotalCount]   = useState(0);
+
   const isLoadingRef = useRef(false);
-  const hasMoreRef = useRef(true);
+  const hasMoreRef   = useRef(true);
 
   const fetchProducts = useCallback(
     async (page: number, isLoadMore = false) => {
       if (isLoadingRef.current) return;
       isLoadingRef.current = true;
-      
-      if (!isLoadMore) {
-        setLoading(true);
-      }
-      
+
+      if (!isLoadMore) setLoading(true);
+
       try {
-        const params: any = {
-          page,
-          pageSize,
-        };
-        
-        if (search) {
-          params.search = search;
-        }
-        
-        if (categoryId) {
-          params.categoryId = categoryId;
-        }
-        
-        console.log('Fetching products with params:', params);
+        const params: any = { page, pageSize };
+
+        if (search)      params.search     = search;
+        if (categoryId)  params.categoryId = categoryId;
+        if (sort)        params.sort       = sort; // ← forward sort
+
         const data: ProductList = await getProducts(params);
-        
+
         const newProducts = data.items || [];
-        const total = data.totalCount || 0;
-        
+        const total       = data.totalCount || 0;
+
         if (isLoadMore) {
           setProducts(prev => [...prev, ...newProducts]);
         } else {
           setProducts(newProducts);
           setTotalCount(total);
         }
-        
-        // Kiểm tra còn trang tiếp theo không
+
         const more = page < data.lastPage;
         setHasMore(more);
         hasMoreRef.current = more;
@@ -83,12 +73,10 @@ export function useLiferayProducts(
         setError(err.message || 'Không thể tải danh sách sản phẩm');
       } finally {
         isLoadingRef.current = false;
-        if (!isLoadMore) {
-          setLoading(false);
-        }
+        if (!isLoadMore) setLoading(false);
       }
     },
-    [search, categoryId, pageSize]
+    [search, categoryId, sort, pageSize] // ← thêm sort vào deps
   );
 
   const loadMore = useCallback(async () => {
@@ -97,9 +85,13 @@ export function useLiferayProducts(
   }, [currentPage, fetchProducts]);
 
   const applyFilters = useCallback(
-    (filters: { search?: string; categoryId?: number }) => {
-      if (filters.search !== undefined) setSearch(filters.search);
+    (filters: { search?: string; categoryId?: number; sort?: string }) => {
+      // Dùng undefined để xóa filter (không filter category = undefined, không undefined string)
+      if (filters.search     !== undefined) setSearch(filters.search);
       if (filters.categoryId !== undefined) setCategoryId(filters.categoryId);
+      if (filters.sort       !== undefined) setSort(filters.sort);       // ← thêm
+
+      // Reset pagination
       setCurrentPage(1);
       setProducts([]);
       setHasMore(true);
@@ -117,21 +109,16 @@ export function useLiferayProducts(
     await fetchProducts(1, false);
   }, [fetchProducts]);
 
+  // Re-fetch khi search / categoryId / sort thay đổi
   useEffect(() => {
     fetchProducts(1, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, categoryId]);
+  }, [search, categoryId, sort]); // ← thêm sort
 
-  return {
-    products,
-    loading,
-    error,
-    hasMore,
-    loadMore,
-    applyFilters,
-    refetch,
-  };
+  return { products, loading, error, hasMore, loadMore, applyFilters, refetch };
 }
+
+// ─── useLiferayCategories (không đổi) ────────────────────────────────────────
 
 interface UseLiferayCategoriesReturn {
   categories: Category[];
@@ -142,8 +129,8 @@ interface UseLiferayCategoriesReturn {
 
 export function useLiferayCategories(): UseLiferayCategoriesReturn {
   const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState<string | null>(null);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -167,10 +154,5 @@ export function useLiferayCategories(): UseLiferayCategoriesReturn {
     fetchCategories();
   }, [fetchCategories]);
 
-  return {
-    categories,
-    loading,
-    error,
-    refetch,
-  };
+  return { categories, loading, error, refetch };
 }

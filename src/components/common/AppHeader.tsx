@@ -17,9 +17,11 @@ interface AppHeaderProps {
   showBack?: boolean;
   isSearchable?: boolean;
   placeholder?: string;
-  
+
   searchQuery?: string;
   onSearchChange?: (text: string) => void;
+  /** Chỉ áp dụng khi KHÔNG bật enableInternalSearch (ô search thật, gõ trực tiếp) */
+  autoFocus?: boolean;
 
   showCart?: boolean;
   cartRoute?: string;
@@ -34,6 +36,14 @@ interface AppHeaderProps {
     label: string;
     onPress: () => void;
   };
+
+  /**
+   * 🆕 Bật chế độ "search điều hướng trang riêng":
+   * Ô search ở đây chỉ còn là nút bấm giả (không nhập được), bấm vào sẽ
+   * chuyển sang trang /search — nơi thực sự xử lý gõ tìm kiếm + hiển thị
+   * kết quả full màn hình. Tránh được lỗi dropdown bị các layer khác che.
+   */
+  enableInternalSearch?: boolean;
 }
 
 export const AppHeader = ({
@@ -43,6 +53,7 @@ export const AppHeader = ({
   placeholder: placeholderProp,
   searchQuery,
   onSearchChange,
+  autoFocus = false,
   showCart = false,
   cartRoute = "/cart",
   onCartPress,
@@ -51,14 +62,16 @@ export const AppHeader = ({
   notificationRoute = "/notifications",
   onNotificationPress,
   rightAction,
+  enableInternalSearch = false,
 }: AppHeaderProps) => {
   const router = useRouter();
   const { c, spacing } = useTheme();
   const insets = useSafeAreaInsets();
-  
+
   const cartCount = useSelector(selectCartCount);
   const placeholder = placeholderProp || AppConfig.header.searchPlaceholder;
 
+  // Fallback state khi dùng ở chế độ không điều khiển (hiếm khi xảy ra)
   const [localSearchQuery, setLocalSearchQuery] = useState("");
   const isControlled = searchQuery !== undefined && onSearchChange !== undefined;
   const currentSearchValue = isControlled ? searchQuery : localSearchQuery;
@@ -71,6 +84,7 @@ export const AppHeader = ({
     }
   };
 
+  // --- Điều hướng giỏ hàng ---
   const handleCartPress = () => {
     if (onCartPress) {
       onCartPress();
@@ -99,22 +113,38 @@ export const AppHeader = ({
 
         {/* Ô tìm kiếm hoặc Tiêu đề */}
         {isSearchable ? (
-          <Searchbar
-            placeholder={placeholder}
-            value={currentSearchValue}
-            onChangeText={handleSearchTextChange}
-            style={[
-              styles.searchBar,
-              { 
-                backgroundColor: c.bg,
-                borderColor: c.border,
-              }
-            ]}
-            inputStyle={[styles.searchBarInput, { color: c.text }]}
-            placeholderTextColor={c.textSub}
-            iconColor={c.primary}
-            selectionColor={c.primary}
-          />
+          enableInternalSearch ? (
+            // ── Nút bấm giả: không nhập được, chỉ để mở trang /search ──
+            <TouchableOpacity
+              style={[styles.searchBar, styles.searchBarFake, { backgroundColor: c.bg, borderColor: c.border }]}
+              activeOpacity={0.7}
+              onPress={() => router.push("/search")}
+            >
+              <Ionicons name="search" size={18} color={c.primary} style={{ marginRight: 8 }} />
+              <AppText numberOfLines={1} style={{ color: c.textSub, fontSize: 14 }}>
+                {placeholder}
+              </AppText>
+            </TouchableOpacity>
+          ) : (
+            // ── Ô search thật, gõ trực tiếp (dùng ở trang /search hoặc nơi khác cần) ──
+            <Searchbar
+              placeholder={placeholder}
+              value={currentSearchValue}
+              onChangeText={handleSearchTextChange}
+              autoFocus={autoFocus}
+              style={[
+                styles.searchBar,
+                {
+                  backgroundColor: c.bg,
+                  borderColor: c.border,
+                },
+              ]}
+              inputStyle={[styles.searchBarInput, { color: c.text }]}
+              placeholderTextColor={c.textSub}
+              iconColor={c.primary}
+              selectionColor={c.primary}
+            />
+          )
         ) : (
           <AppText variant="body1" weight="600" style={[styles.title, { color: c.text }]}>
             {title}
@@ -184,6 +214,12 @@ const styles = StyleSheet.create({
     height: 40,
     elevation: 0,
     borderWidth: 1,
+  },
+  searchBarFake: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    borderRadius: 8,
   },
   searchBarInput: {
     fontSize: 14,

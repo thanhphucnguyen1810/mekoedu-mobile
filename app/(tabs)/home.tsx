@@ -33,7 +33,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
-      <AppHeader isSearchable showCart />
+      <AppHeader isSearchable showCart enableInternalSearch />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[

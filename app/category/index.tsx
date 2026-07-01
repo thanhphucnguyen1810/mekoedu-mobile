@@ -1,4 +1,4 @@
-// app/(tabs)/categories.tsx  (hoặc categories screen của bạn)
+// app/(tabs)/categories.tsx
 import { AppHeader } from "@/src/components/common";
 import { AppText } from "@/src/components/common/AppText";
 import CourseCard from "@/src/components/CourseCard";
@@ -12,8 +12,7 @@ import { selectCartCount } from "@/src/store/slices/cartSlice";
 import { useTheme } from "@/src/theme";
 import { CatalogProduct, Category } from "@/src/types/liferay";
 import { Ionicons } from "@expo/vector-icons";
-import { usePathname } from "expo-router";
-import { router, useLocalSearchParams, useRouter } from "expo-router";
+import { router, useLocalSearchParams, usePathname, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -145,7 +144,6 @@ export default function CategoriesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [hasMore, setHasMore]       = useState(true);
   const [page, setPage]             = useState(1);
-  const [searchText, setSearchText] = useState("");
 
   const fetchingRef = useRef(false);
   const pageRef     = useRef(1);
@@ -193,7 +191,6 @@ export default function CategoriesScreen() {
     setProducts([]);
     setPage(1);
     setHasMore(true);
-    setSearchText("");
     loadChildren(id);
   };
 
@@ -244,10 +241,7 @@ export default function CategoriesScreen() {
     loadProducts(selParent, pageRef.current + 1, true, selSub);
   };
 
-  // ── Filtered products (local search) ────────────────────────────────────────
-  const filtered = searchText.trim()
-    ? products.filter(p => p.name?.toLowerCase().includes(searchText.toLowerCase()))
-    : products;
+  // ── Không còn lọc cục bộ theo từ khóa, dùng trực tiếp products ──────────────
 
   // ── Renders ─────────────────────────────────────────────────────────────────
   const renderCard = ({ item, index }: { item: CatalogProduct; index: number }) => (
@@ -282,7 +276,7 @@ export default function CategoriesScreen() {
       {/* Result count */}
       <View style={[styles.countBar, { borderBottomColor: c.border }]}>
         <AppText style={[styles.countText, { color: c.textSub }]}>
-          {filtered.length} khóa học
+          {products.length} sản phẩm
         </AppText>
       </View>
     </View>
@@ -300,10 +294,9 @@ export default function CategoriesScreen() {
       {/* ── Top bar ── */}
       <AppHeader
         isSearchable
-        placeholder="Tìm trong danh mục..."
-        searchQuery={searchText}
-        onSearchChange={setSearchText}
+        placeholder="Tìm kiếm sản phẩm..."
         showCart
+        enableInternalSearch  //  Bật chế độ nút giả điều hướng sang /search
       />
 
       {/* ── Body: sidebar + content ── */}
@@ -338,7 +331,7 @@ export default function CategoriesScreen() {
             </View>
           ) : (
             <FlatList
-              data={filtered}
+              data={products}
               keyExtractor={(item, i) => `${item.productId ?? item.id}-${i}`}
               numColumns={NUM_COLS}
               contentContainerStyle={styles.gridContent}
@@ -350,13 +343,13 @@ export default function CategoriesScreen() {
                   <View style={styles.emptyState}>
                     <Ionicons name="book-outline" size={36} color={c.border} />
                     <AppText style={[styles.emptyText, { color: c.textSub }]}>
-                      {searchText ? "Không tìm thấy khóa học" : "Chưa có khóa học"}
+                      Chưa có sản phẩm
                     </AppText>
                   </View>
                 ) : null
               }
               ListFooterComponent={
-                hasMore && filtered.length > 0 ? (
+                hasMore && products.length > 0 ? (
                   <TouchableOpacity
                     style={[styles.loadMoreBtn, { borderColor: c.border }]}
                     onPress={handleLoadMore}
@@ -368,7 +361,7 @@ export default function CategoriesScreen() {
                           <Ionicons name="chevron-down" size={14} color={c.primary} /></>
                     }
                   </TouchableOpacity>
-                ) : filtered.length > 0 ? (
+                ) : products.length > 0 ? (
                   <View style={[styles.endRow, { borderTopColor: c.border }]}>
                     <AppText style={[styles.endText, { color: c.textSub }]}>Đã hiển thị tất cả</AppText>
                   </View>
@@ -403,16 +396,15 @@ function BottomTabBar({ insets }: { insets: any }) {
     { label: "Tài khoản", icon: "person-outline", activeIcon: "person", route: "/(tabs)/profile" },
   ];
 
-  // Hàm kiểm tra tab có đang active không
   const isActive = (route: string) => {
     return pathname === route;
   };
 
   return (
     <View style={{
-      position: "absolute", 
-      bottom: 0, 
-      left: 0, 
+      position: "absolute",
+      bottom: 0,
+      left: 0,
       right: 0,
       height: TAB_HEIGHT + insets.bottom,
       backgroundColor: c.bg,
@@ -426,11 +418,11 @@ function BottomTabBar({ insets }: { insets: any }) {
         return (
           <TouchableOpacity
             key={tab.route}
-            style={{ 
-              flex: 1, 
-              alignItems: "center", 
-              justifyContent: "center", 
-              gap: 3 
+            style={{
+              flex: 1,
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 3
             }}
             onPress={() => router.push(tab.route as any)}
             activeOpacity={0.7}
@@ -440,11 +432,11 @@ function BottomTabBar({ insets }: { insets: any }) {
               size={22}
               color={active ? c.primary : c.textSub}
             />
-            <AppText 
-              style={{ 
-                fontSize: 10, 
-                color: active ? c.primary : c.textSub, 
-                fontWeight: active ? "600" : "400" 
+            <AppText
+              style={{
+                fontSize: 10,
+                color: active ? c.primary : c.textSub,
+                fontWeight: active ? "600" : "400"
               }}
             >
               {tab.label}
@@ -546,4 +538,3 @@ const styles = StyleSheet.create({
   },
   endText: { fontSize: 11 },
 });
-

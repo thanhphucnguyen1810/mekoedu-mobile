@@ -12,7 +12,7 @@ import type { UserInfo } from "../types/liferay";
 import { getClientToken } from "./authService";
 
 let _cachedAccountId: number | null = null;
- 
+
 /** Xóa cache – gọi khi logout */
 export function clearAccountCache(): void {
   _cachedAccountId = null;
@@ -22,7 +22,7 @@ export async function saveAccountId(accountId: number): Promise<void> {
   _cachedAccountId = accountId;
   await AsyncStorage.setItem(TOKEN_KEYS.ACCOUNT_ID, String(accountId));
 }
- 
+
 async function getSavedAccountId(): Promise<number | null> {
   // Memory cache trước
   if (_cachedAccountId) return _cachedAccountId;
@@ -38,42 +38,45 @@ async function getSavedAccountId(): Promise<number | null> {
 export async function getMyUserInfo(): Promise<UserInfo> {
   const res = await http.get<UserInfo>(
     "/o/headless-admin-user/v1.0/my-user-account"
-  );  
+  );
   return res.data;
 }
 
 /**
  * Đảm bảo user đã có Liferay Account.
- * * Thứ tự ưu tiên:
+ *
+ * Thứ tự ưu tiên:
  * 1. Memory cache → trả về ngay (0 network call)
- * 2. AsyncStorage → trả về ngay (0 network call)
+ * 2. AsyncStorage → trả về ngay
  * 3. userInfo.accountBriefs → 1 network call, lưu lại
  * 4. Tạo mới account + gán user → 3 network calls, lưu lại
+ *
+ * (Channel Account Eligibility = "All Accounts" nên không cần gắn
+ * account vào channel ở bất kỳ nhánh nào.)
  */
 export async function ensureUserAccount(): Promise<number | null> {
   try {
-    // ─── 1 & 2: Cache hit ────────────────────────────────────────────────────
+    // ─── 1 & 2: Cache hit ──────────────────────────────────────────────────
     const saved = await getSavedAccountId();
     if (saved) {
       console.log(`[userService] accountId from cache: ${saved}`);
       return saved;
     }
- 
-    // ─── 3: Lấy từ Liferay userInfo ──────────────────────────────────────────
+
+    // ─── 3: Lấy từ Liferay userInfo ────────────────────────────────────────
     const userInfo = await getMyUserInfo();
-    console.log("[userService] userInfo:", userInfo);
- 
+
     if (userInfo.accountBriefs?.length) {
       const accountId = userInfo.accountBriefs[0].id;
       await saveAccountId(accountId);
       console.log(`[userService] accountId from userInfo: ${accountId}`);
       return accountId;
     }
- 
-    // ─── 4: Tạo mới account ──────────────────────────────────────────────────
+
+    // ─── 4: Tạo mới account ─────────────────────────────────────────────────
     console.log("[userService] Tạo mới account cho user...");
     const clientToken = await getClientToken();
- 
+
     const createRes = await http.post(
       "/o/headless-admin-user/v1.0/accounts",
       {
@@ -83,10 +86,10 @@ export async function ensureUserAccount(): Promise<number | null> {
       },
       { headers: { Authorization: `Bearer ${clientToken}` } }
     );
- 
+
     const accountId = createRes.data?.id;
     if (!accountId) throw new Error("Create account response missing id");
- 
+
     // Gán user vào account
     await http.post(
       `/o/headless-admin-user/v1.0/accounts/${accountId}/user-accounts/by-email-address`,
@@ -98,7 +101,7 @@ export async function ensureUserAccount(): Promise<number | null> {
         },
       }
     );
- 
+
     await saveAccountId(accountId);
     console.log(`[userService] Created new accountId: ${accountId}`);
     return accountId;

@@ -1,8 +1,11 @@
 // src/components/CourseCard/index.tsx
+import { SkuBottomSheet } from '@/src/components/SkuBottomSheet';
+import { AppConfig } from '@/src/config/appConfig';
 import { useCartSync } from '@/src/hooks/useCartSync';
 import { useFlyToCart } from '@/src/hooks/useFlyToCart';
+import { getProduct } from '@/src/services/liferay';
 import { Colors, Spacing, useTheme } from '@/src/theme';
-import type { CatalogProduct } from '@/src/types/liferay';
+import type { CatalogProduct, ProductSku, SkuOption } from '@/src/types/liferay';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useRef, useState } from 'react';
 import {
@@ -13,7 +16,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { AppConfig } from '@/src/config/appConfig';
 
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -62,6 +64,7 @@ const LogoOverlay = () => {
 
 // ─── CourseCard ───────────────────────────────────────────────────────────
 export const CourseCard: React.FC<CourseCardProps> = ({ course, onPress }) => {
+  // console.log('course.skus:', course.skus)
   const { c, radius } = useTheme();
   const { addToCartAsync } = useCartSync();
   const { flyFrom } = useFlyToCart();
@@ -69,60 +72,85 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course, onPress }) => {
 
   const [imgError, setImgError] = useState(false);
   const [imgLoading, setImgLoad] = useState(true);
-  const [isAddingCart, setIsAddingCart] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── SKU Bottom Sheet state ──────────────────────────────────────────────
+  const [sheetVisible, setSheetVisible] = useState(false);
+  const [fullProduct, setFullProduct] = useState<any>(null);
+  const [loadingProduct, setLoadingProduct] = useState(false);
+
   const sku = course.skus?.[0];
-  const productId = (sku as any)?.productId ?? (course as any)?.productId ?? course.id;
+  const productId = (sku as any)?.productId ?? course.id;
   const raw = getRawPrice(sku);
   const promo = getPromoPrice(sku);
   const price = fmtPrice(sku);
   const imageUrl = getImageUrl(course);
-  const skuId = (sku as any)?.skuId ?? (sku as any)?.id ?? 0;
   const hasDiscount = promo != null && promo < raw;
   const pct = hasDiscount ? Math.round((1 - promo! / raw) * 100) : 0;
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    setActiveToastMsg({ text, type });
+    setToastMsg({ text, type });
     toastTimer.current = setTimeout(() => setToastMsg(null), 2200);
   };
 
-  const setActiveToastMsg = (msg: { text: string; type: 'success' | 'error' } | null) => {
-    setToastMsg(msg);
+  // ── Mở SkuBottomSheet (fetch product đầy đủ trước) ─────────────────────
+  const handlePlusPress = async () => {
+    if (loadingProduct) return;
+    // console.log('[CourseCard] handlePlusPress, productId =', productId, '(course.id =', course.id, ')');
+    setLoadingProduct(true);
+    try {
+      const data = await getProduct(productId);  // ★ dùng productId, KHÔNG dùng course.id
+      // console.log('[CourseCard] getProduct success:', data?.id, data?.name, data?.skus?.length);
+      setFullProduct(data);
+      setSheetVisible(true);
+    } catch (e) {
+      console.error('[CourseCard] getProduct FAILED:', e);
+      showToast('Không thể tải thông tin sản phẩm', 'error');
+    } finally {
+      setLoadingProduct(false);
+    }
   };
 
-  const handleAddToCart = async () => {
-    if (isAddingCart) return;
-    setIsAddingCart(true);
+  // ── Callback từ SkuBottomSheet khi user bấm "Thêm vào giỏ" ─────────────
+   const handleSheetAddToCart = async (skuId: number, price: number, promoPrice?: number) => {
+    const skuObj = (fullProduct?.skus as ProductSku[])?.find(s => s.id === skuId);
+    if (!skuObj) {
+      console.warn('SKU not found');
+      return;
+    }
+
+    const optionsLabel = (skuObj.skuOptions || [])
+      .map((opt: SkuOption) => {
+        const name = opt.skuOptionName || '';
+        const value = opt.skuOptionValueNames?.[0] || '';
+        return value ? `${name}: ${value}` : '';
+      })
+      .filter(Boolean)
+      .join(' - ');
 
     const payload = {
-      productId: productId,
-      skuId,
+      productId,   
+      skuId: skuObj.id,
       quantity: 1,
       name: course.name,
-      price: raw,
-      promoPrice: promo,
+      displayName: course.name,
+      optionsLabel,
+      price,
+      promoPrice,
       thumbnail: imageUrl,
       catalogName: course.catalogName,
     };
+    const cartItemId = await addToCartAsync(payload);
 
-    try {
-      const cartItemId = await addToCartAsync(payload);
-      if (cartItemId) {
-        cartBtnRef.current?.measureInWindow((x, y, width, height) => {
-          const origin = { x: x + width / 2, y: y + height / 2 };
-          flyFrom(origin, MEKO_RED, imageUrl);
-        });
-        showToast('Đã thêm vào giỏ hàng', 'success');
-      } else {
-        showToast('Không thể thêm vào giỏ', 'error');
-      }
-    } catch (error: any) {
-      showToast(error?.message ?? 'Đã xảy ra lỗi', 'error');
-    } finally {
-      setIsAddingCart(false);
+    if (cartItemId) {
+      cartBtnRef.current?.measureInWindow((x, y, width, height) => {
+        flyFrom({ x: x + width / 2, y: y + height / 2 }, MEKO_RED, imageUrl);
+      });
+      showToast('Đã thêm vào giỏ hàng', 'success');
+    } else {
+      throw new Error('Không thể thêm vào giỏ');
     }
   };
 
@@ -229,17 +257,17 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course, onPress }) => {
             )}
           </View>
 
-          {/* Nút + thêm giỏ hàng */}
+          {/* Nút + thêm giỏ hàng — mở SkuBottomSheet */}
           {raw > 0 && (
             <View ref={cartBtnRef} collapsable={false} style={styles.plusBtnContainer}>
               <TouchableOpacity
                 style={[styles.plusBtn, { backgroundColor: MEKO_RED }]}
-                onPress={handleAddToCart}
-                disabled={isAddingCart}
+                onPress={handlePlusPress}
+                disabled={loadingProduct}
                 activeOpacity={0.7}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                {isAddingCart ? (
+                {loadingProduct ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
                   <Ionicons name="add" size={20} color="#fff" />
@@ -271,6 +299,19 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course, onPress }) => {
           <Text style={styles.toastText}>{toastMsg.text}</Text>
         </View>
       )}
+
+      {/* ── SkuBottomSheet (popup kiểu Shopee) ── */}
+      <SkuBottomSheet
+        visible={sheetVisible}
+        onClose={() => setSheetVisible(false)}
+        product={fullProduct ? {
+          name: fullProduct.name,
+          thumbnail: imageUrl,
+          skus: fullProduct.skus ?? [],
+          catalogName: fullProduct.catalogName,
+        } : null}
+        onAddToCart={handleSheetAddToCart}
+      />
     </TouchableOpacity>
   );
 };
@@ -280,8 +321,8 @@ export default CourseCard;
 // ─── Styles ────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   card: {
-    flex: 1,                  
-    minHeight: 220,             
+    flex: 1,
+    minHeight: 220,
     // Đã xóa hoàn toàn margin: 4 để tránh xung đột tính toán kích thước chiều ngang với layout cha
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -330,8 +371,8 @@ const styles = StyleSheet.create({
     fontSize: 13, // Giảm nhẹ xuống 13 để cân đối hài hòa trên màn hình nhỏ hiển thị 2 cột
     fontWeight: '600',
     lineHeight: 18,
-    minHeight: 36, 
-    flexShrink: 1,              
+    minHeight: 36,
+    flexShrink: 1,
   },
 
   bottomRow: {

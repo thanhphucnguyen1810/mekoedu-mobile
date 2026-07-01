@@ -10,6 +10,8 @@ import { Provider } from "react-redux";
 import FlyToCartOverlay from "@/src/components/FlyToCartOverlay";
 import { store } from "../src/store";
 import { ThemeProvider, useTheme } from "../src/theme";
+import { StatusBar } from "expo-status-bar";
+import { MEKO_RED } from "@/src/components/cart/cartConstants";
 
 const ROOT_PADDING = 8;
 
@@ -18,32 +20,35 @@ const RootNavigation = () => {
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.container, { backgroundColor: c.bg }]}>
-      <View
-        style={[
-          styles.layoutWrapper,
-          {
-            paddingTop: insets.top > 0 ? ROOT_PADDING : 0,
-            paddingBottom: insets.bottom > 0 ? ROOT_PADDING : 0,
-            paddingLeft: ROOT_PADDING,
-            paddingRight: ROOT_PADDING,
-          },
-        ]}
-      >
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: c.bg },
-          }}
+    <>
+      <StatusBar style="light" backgroundColor={MEKO_RED} />
+      <View style={[styles.container, { backgroundColor: c.bg }]}>
+        <View
+          style={[
+            styles.layoutWrapper,
+            {
+              paddingTop: insets.top > 0 ? ROOT_PADDING : 0,
+              paddingBottom: insets.bottom > 0 ? ROOT_PADDING : 0,
+              paddingLeft: ROOT_PADDING,
+              paddingRight: ROOT_PADDING,
+            },
+          ]}
         >
-          <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-          <Stack.Screen name="welcome" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        </Stack>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: c.bg },
+            }}
+          >
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+            <Stack.Screen name="welcome" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+          </Stack>
+        </View>
       </View>
-    </View>
+    </>
   );
 };
 

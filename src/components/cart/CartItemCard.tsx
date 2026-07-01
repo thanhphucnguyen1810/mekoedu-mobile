@@ -5,6 +5,7 @@ import { Colors, Spacing, useTheme } from "@/src/theme";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useRef } from "react";
 import {
+  Alert,
   Animated,
   Image,
   PanResponder,
@@ -36,6 +37,8 @@ export function CartItemCard({ item, onRemove, onQuantityChange }: Props) {
     itemRef.current = item;
   });
 
+  console.log(item);
+  
   useEffect(() => {
     translateX.setValue(0);
     dragOffset.current = 0;
@@ -85,6 +88,17 @@ export function CartItemCard({ item, onRemove, onQuantityChange }: Props) {
     triggerDeleteRef.current = triggerDelete;
   });
 
+  const showDeleteConfirmation = useCallback(() => {
+    Alert.alert(
+      'Xóa sản phẩm?',
+      `Bạn có chắc muốn xóa "${item.displayName || item.name}" khỏi giỏ hàng?`,
+      [
+        { text: 'Hủy', style: 'cancel', onPress: snapBack },
+        { text: 'Xóa', style: 'destructive', onPress: triggerDelete },
+      ]
+    );
+  }, [item, triggerDelete, snapBack]);
+
   // ── PanResponder ───────────────────────────────────────────────────────────
 
   const panResponder = useRef(
@@ -109,10 +123,8 @@ export function CartItemCard({ item, onRemove, onQuantityChange }: Props) {
         if (isDeleting.current) return;
         const currentOffset = dragOffset.current + g.dx;
         if (currentOffset < -DELETE_BTN_WIDTH * 0.6) {
-          // Kéo quá 60% → xóa luôn không cần nhấn nút
-          triggerDeleteRef.current();
+          showDeleteConfirmation()
         } else if (currentOffset < -DELETE_BTN_WIDTH * 0.3) {
-          // Kéo 30–60% → mở hé nút xóa
           snapOpen();
         } else {
           snapBack();
@@ -136,7 +148,7 @@ export function CartItemCard({ item, onRemove, onQuantityChange }: Props) {
       >
         <TouchableOpacity
           style={styles.deleteTouch}
-          onPress={triggerDelete}
+          onPress={showDeleteConfirmation}
           activeOpacity={0.8}
         >
           <Ionicons name="trash-outline" size={24} color="#fff" />
@@ -181,7 +193,7 @@ export function CartItemCard({ item, onRemove, onQuantityChange }: Props) {
 
           {/* Info */}
           <View style={styles.info}>
-            {item.catalogName && (
+            {/* {item.catalogName && (
               <View style={styles.catalogRow}>
                 <Ionicons
                   name="storefront-outline"
@@ -192,15 +204,24 @@ export function CartItemCard({ item, onRemove, onQuantityChange }: Props) {
                   {item.catalogName}
                 </AppText>
               </View>
-            )}
+            )} */}
+
             <AppText
               variant="body2"
               weight="500"
               numberOfLines={2}
               style={[styles.name, { color: c.text }]}
             >
-              {item.name}
+              {item.displayName || item.name}
             </AppText>
+            {/* Hiển thị optionsLabel nếu có */}
+            {item.optionsLabel ? (
+              <View style={styles.skuRow}>
+                <AppText variant="caption" style={styles.skuText}>
+                  {item.optionsLabel}
+                </AppText>
+              </View>
+            ) : null}
             <View style={styles.priceRow}>
               <AppText style={styles.priceMain}>{fmtVND(price)}</AppText>
               {pct > 0 && (
@@ -309,6 +330,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginTop: 2,
+  },
+  skuRow: {
+    marginTop: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  skuText: {
+    color: Colors.neutral[500],
+    fontSize: 12,
+    lineHeight: 16,
   },
 });
 
